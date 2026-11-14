@@ -19,7 +19,7 @@ Install changenote through uv from PyPI on all five Actions. Accept only `latest
 - [x] Run live latest/exact installation checks, complete metadata/integration suites, and workflow checks; preserve any failing gate and its evidence.
   - Latest resolves to 0.9.2; `v0.9.1` resolves to 0.9.1. All 42 metadata tests pass. The full integration suite has 178 passing tests and 3 xcconfig failures.
   - Shell syntax, ShellCheck, actionlint, zizmor, whitespace checks, and 44 documentation link targets pass.
-- [ ] Commit and push only intended Action paths to PR #3, with actual validation results and any external blocker recorded.
+- [x] Commit and push only intended Action paths to PR #3, with actual validation results and the PyPI compatibility blocker recorded in its description.
 
 ## Completion Checklist
 
@@ -27,7 +27,7 @@ Install changenote through uv from PyPI on all five Actions. Accept only `latest
 - [x] Bare versions fail before installation; `latest` and `vX.Y.Z` resolve the expected requirements.
 - [x] All five Action entry points use the installer; uv is unconditional and Rust setup remains limited to configured Cargo work.
 - [ ] Blocked: the complete integration gate must pass after compatible PyPI wheels are published. The existing three Swift tests currently fail; no tests were skipped.
-- [ ] PR #3 reflects the implemented behavior and actual checks; no release commands or settings changes occur.
+- [x] PR #3 reflects the implemented behavior and actual checks; no release commands or settings changes occurred.
 
 ## Rollback / Recovery
 
