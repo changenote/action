@@ -133,6 +133,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         GH_TOKEN: ${{ inputs.github-token }}
         INPUT_OPERATION: ${{ steps.selection.outputs.environment-operation }}
+        INPUT_EXPECTED_RELEASE_COMMIT: ${{ steps.selection.outputs.release-commit }}
         INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/scripts/action/release-environment.sh" discover
@@ -161,6 +162,7 @@ runs:
         ACTION_PATH: ${{ github.action_path }}
         GH_TOKEN: ${{ inputs.github-token }}
         INPUT_OPERATION: ${{ steps.selection.outputs.environment-operation }}
+        INPUT_EXPECTED_RELEASE_COMMIT: ${{ steps.selection.outputs.release-commit }}
         INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/scripts/action/release-environment.sh" warm

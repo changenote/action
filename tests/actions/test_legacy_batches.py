@@ -19,7 +19,8 @@ class LegacyBatches(unittest.TestCase):
         self.f.git("config", "maintenance.auto", "false")
         event = self.f.top / "event.json"
         event.write_text(json.dumps({"forced": False, "deleted": False}))
-        self.f.env.update(GITHUB_EVENT_NAME="push", GITHUB_EVENT_PATH=str(event), INPUT_OPERATION="auto")
+        self.f.env.update(GITHUB_EVENT_NAME="push", GITHUB_EVENT_PATH=str(event),
+                          INPUT_PUSH_GIT_TAGS="true", INPUT_CREATE_GITHUB_RELEASES="true")
 
     def legacy_release(self, flat=False):
         f = self.f
@@ -68,12 +69,12 @@ class LegacyBatches(unittest.TestCase):
                 self.assertEqual(out["release-commit"], sha)
                 self.assert_no_remote_writes(before)
 
-    def test_auto_and_retry_accept_complete_legacy_batch(self):
+    def test_explicit_publication_and_retry_accept_complete_legacy_batch(self):
         sha = self.legacy_release()
         self.complete_publication(sha)
         before = self.f.state(), snapshot(self.f.remote)
         _, out = self.f.action("release")
-        self.assertEqual(out["release-commit"], "")
+        self.assertEqual(out["release-commit"], sha)
         self.assertEqual(out["publication-needed"], "false")
         self.assertEqual(out["ready"], "true")
         self.assertEqual(out["published"], "false")
@@ -83,7 +84,7 @@ class LegacyBatches(unittest.TestCase):
         self.assertEqual(out["published"], "false")
         self.assert_no_remote_writes(before)
 
-    def test_auto_manages_next_pr_after_complete_legacy_batch(self):
+    def test_explicit_publication_manages_next_pr_after_complete_legacy_batch(self):
         sha = self.legacy_release()
         self.complete_publication(sha)
         self.f.note("Next release", "next")

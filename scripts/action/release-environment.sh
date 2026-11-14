@@ -70,7 +70,7 @@ inspect_environment() {
 
 if [[ $operation != manage-pr ]]; then
   find_publication_batch
-  if [[ $operation == publish ]]; then
+  if [[ $operation == publish || -n ${INPUT_EXPECTED_RELEASE_COMMIT:-} ]]; then
     [[ ${INPUT_EXPECTED_RELEASE_COMMIT:-} == "$release" ]] || fail 'Release batch changed after inspection; inspect and validate it again.'
   fi
   if [[ -n $release ]]; then inspect_environment "$parent" consumed; fi

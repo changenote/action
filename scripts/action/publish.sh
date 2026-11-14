@@ -2,7 +2,7 @@
 set -euo pipefail
 # shellcheck source=scripts/action/publication.sh
 source "${BASH_SOURCE[0]%/*}/publication.sh"
-publication_targets "${2:-true}" "${3:-true}"
+publication_targets "${2-true}" "${3-true}"
 if [[ $# -gt 1 ]]; then
   setup_readonly
   git -C "$root" config user.name 'github-actions[bot]'

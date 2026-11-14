@@ -1,6 +1,5 @@
 """Draft state is controlled only on managed PRs, through both public workers."""
 
-import json
 import unittest
 
 import test_actions

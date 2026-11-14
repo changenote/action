@@ -71,6 +71,7 @@ if [[ $mode == select ]]; then
   scope=manage-pr
   if [[ $release_selected == true ]]; then scope=auto; fi
   output environment-operation "$scope"
+  output release-commit "$expected"
   exit 0
 fi
 
@@ -85,7 +86,9 @@ output has-notes false
 output pr-number ''
 output pr-operation none
 
-management_token=${INPUT_GITHUB_TOKEN:?github-token is required}
+# Worker token changes occur in fresh Bash processes, not in this caller.
+# shellcheck disable=SC2031
+management_token=${INPUT_GITHUB_TOKEN:-${GH_TOKEN:-}}
 pr_result=0
 if [[ ${INPUT_PR_ENVIRONMENT_READY:-true} == false ]]; then
   printf 'PR environment preparation failed; verified release work will still be attempted.\n' >&2

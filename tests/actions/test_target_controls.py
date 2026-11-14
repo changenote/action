@@ -127,6 +127,58 @@ class TargetControls(unittest.TestCase):
         self.assertEqual(out["ready"], "false")
         self.assertEqual(len(self.f.state()["releases"]), 1)
 
+    def test_new_batch_after_either_script_blocks_later_work(self):
+        sha = self.h.merged()
+        self.f.note("Second release", "second")
+        self.f.cli("version")
+        newer = self.f.commit("second batch")
+        self.f.git("push", "origin", "main")
+        self.f.env.update(REMOTE=str(self.f.remote), NEWER=newer)
+        script = 'git --git-dir="$REMOTE" update-ref refs/heads/main "$NEWER"; echo ran >> "$CALLS"'
+        for first, final, builtin in ((script, 'echo unexpected >> "$CALLS"', False),
+                                      ("", script, False), (script, "", True)):
+            with self.subTest(first=bool(first), builtin=builtin):
+                self.f.run_cmd(["git", "--git-dir=" + str(self.f.remote), "update-ref", "refs/heads/main", sha])
+                self.h.calls.unlink(missing_ok=True)
+                self.flags(builtin, builtin)
+                result, out = self.h.run_hooks(first, final, after=sha, ok=False)
+                self.assertIn("changed before publication", result.stderr)
+                self.assertEqual(out["ready"], "false")
+                self.assertEqual(self.h.lines(), ["ran"])
+                self.assertEqual(self.f.git("ls-remote", "--tags", "origin"), "")
+
+    def test_preparation_scopes_follow_selected_release_work(self):
+        sha = self.h.merged()
+        self.f.later_commit()
+        cases = [
+            ("push", self.h.before, "", False, "manage-pr", ""),
+            ("push", self.h.before, "", True, "auto", ""),
+            ("push", self.h.before, "true", False, "auto", sha),
+            ("push", sha, "true", True, "manage-pr", ""),
+            ("workflow_dispatch", self.h.before, "true", True, "manage-pr", ""),
+        ]
+        for event, before, script, tags, scope, expected in cases:
+            with self.subTest(event=event, script=script, tags=tags, before=before):
+                self.flags(tags, tags)
+                self.h.event.write_text(json.dumps({
+                    "before": before, "after": self.f.git("rev-parse", "HEAD"),
+                    "forced": False, "deleted": False,
+                }))
+                self.f.env.update(GITHUB_EVENT_NAME=event, GITHUB_EVENT_PATH=str(self.h.event),
+                                  GITHUB_SHA=self.f.git("rev-parse", "HEAD"),
+                                  GITHUB_REF="refs/heads/main", INPUT_PUBLISH_SCRIPT=script,
+                                  INPUT_RELEASE_SCRIPT="", INPUT_PREPARE="false",
+                                  INPUT_CLI_PATH=str(test_actions.CLI))
+                output = self.f.top / "selection"
+                output.write_text("")
+                self.f.env["GITHUB_OUTPUT"] = str(output)
+                result = self.f.run_cmd(["bash", str(test_actions.SOURCE / "scripts/action/release.sh"), "select"])
+                self.assertEqual(result.returncode, 0)
+                values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+                self.assertEqual(values, {"environment-operation": scope, "release-commit": expected})
+        self.assertEqual(self.f.state()["releases"], [])
+        self.assertEqual(self.f.git("ls-remote", "--tags", "origin"), "")
+
     def test_requested_api_failure_and_tag_conflict_stop_before_scripts(self):
         sha = self.h.merged()
         self.flags(True, True)
@@ -206,6 +258,25 @@ class TargetControls(unittest.TestCase):
         hook.unlink()
         _, out = self.worker("publish", False, True, sha)
         self.assertEqual(len(json.loads(out["published-packages"])), 1)
+        self.assertEqual(self.f.state()["releases"], [])
+
+    def test_all_release_bodies_are_validated_before_either_script(self):
+        (self.f.repo / "b").mkdir()
+        (self.f.repo / "b/VERSION").write_text("2.0.0\n")
+        (self.f.repo / "b/CHANGELOG.md").write_text("## 2.0.1\n\nAlready present\n")
+        config = self.f.repo / ".changenote/config.json"
+        value = json.loads(config.read_text())
+        value["packages"]["b"] = {"path": "b", "version_file": "VERSION"}
+        config.write_text(json.dumps(value))
+        self.f.cli("add", "b", "--patch", "b", "-m", "Fix b")
+        self.f.commit("second package with duplicate release entry")
+        self.f.git("push", "origin", "main")
+        self.h.merged()
+        self.flags(True, True)
+        result, _ = self.h.run_hooks('echo unexpected >> "$CALLS"', 'echo final >> "$CALLS"', ok=False)
+        self.assertIn("expected exactly one changelog entry", result.stderr)
+        self.assertEqual(self.h.lines(), [])
+        self.assertEqual(self.f.git("ls-remote", "--tags", "origin"), "")
         self.assertEqual(self.f.state()["releases"], [])
 
     def test_tags_only_namespace_conflict_and_push_race(self):

@@ -5,8 +5,8 @@ source "${BASH_SOURCE[0]%/*}/common.sh"
 
 # Internal worker arguments default to the standalone full-publication contract.
 publication_targets() {
-  create_releases=${1:-true}
-  push_tags=${2:-true}
+  create_releases=${1-true}
+  push_tags=${2-true}
   [[ $create_releases == true || $create_releases == false ]] || fail 'create-github-releases must be true or false.'
   [[ $push_tags == true || $push_tags == false ]] || fail 'push-git-tags must be true or false.'
   [[ $create_releases == false || $push_tags == true ]] || fail 'create-github-releases requires push-git-tags.'

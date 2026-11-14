@@ -49,7 +49,7 @@ class RootMetadata(unittest.TestCase):
             step = self.step(name)
             self.assertEqual(step["if"], "inputs.prepare == 'true'")
             self.assertEqual(step["env"]["INPUT_OPERATION"], "${{ steps.selection.outputs.environment-operation }}")
-            self.assertNotIn("INPUT_EXPECTED_RELEASE_COMMIT", step["env"])
+            self.assertEqual(step["env"]["INPUT_EXPECTED_RELEASE_COMMIT"], "${{ steps.selection.outputs.release-commit }}")
         run = self.step("Run release operation")
         self.assertNotIn("INPUT_OPERATION", run["env"])
         self.assertEqual(run["env"]["INPUT_PUSH_GIT_TAGS"], "${{ inputs.push-git-tags }}")

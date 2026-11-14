@@ -44,6 +44,20 @@ class RootAction(unittest.TestCase):
             self.assertEqual(set(outputs), OUTPUTS)
         return result, outputs
 
+    def test_defaults_and_whitespace_scripts_do_not_select_a_saved_batch(self):
+        self.f.release()
+        log = self.f.log_cli_calls()
+        for script in ("", " \n\t"):
+            log.write_text("")
+            self.f.env["INPUT_PUBLISH_SCRIPT"] = script
+            _, out = self.run_root(publication=False)
+            self.assertEqual(out["ready"], "false")
+            self.assertEqual(out["release-commit"], "")
+            self.assertEqual(out["releases"], "[]")
+            self.assertEqual(log.read_text().splitlines(), ["status"])
+        self.assertEqual(self.f.state()["releases"], [])
+        self.assertEqual(self.f.git("ls-remote", "--tags", "origin"), "")
+
     def test_no_batch_and_manual_runs_do_not_publish(self):
         for publication, event in ((True, "push"), (True, "workflow_dispatch"),
                                    (False, "workflow_dispatch")):

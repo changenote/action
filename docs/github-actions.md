@@ -46,6 +46,7 @@ Preparation does not execute the named release operation.
 Root `prepare` defaults to `true` for every invocation. PR-only calls prepare pending PR work.
 Selected release work also prepares the batch's replay tools and offline caches.
 Scopes are derived internally from the event, managed merge, scripts, and publication controls.
+A routed release commit also guards preparation against a newer remote batch.
 Set root `prepare: 'false'` after caller-owned preparation, including a previous `/prepare` step.
 This skips project preparation, not mandatory CLI or router prerequisites. Either script requires pinned uv setup even with a reused CLI.
 Custom build dependencies remain caller-owned.
