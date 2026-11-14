@@ -19,8 +19,6 @@ jobs:
     steps:
       - uses: changenote/action/inspect@<full-action-commit-sha>
         id: inspect
-        with:
-          version: 'v0.13.0'
 ```
 
 No caller checkout is needed; selection uses the remote base branch in a temporary repository.

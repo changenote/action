@@ -28,12 +28,10 @@ jobs:
       - uses: changenote/action/prepare@<full-action-commit-sha>
         with:
           base-branch: main
-          version: 'v0.13.0'
           operation: inspect
       - uses: changenote/action/publish@<full-action-commit-sha>
         with:
           base-branch: main
-          version: 'v0.13.0'
 ```
 
 This manual workflow publishes the latest validated batch, including incomplete work from an earlier push.

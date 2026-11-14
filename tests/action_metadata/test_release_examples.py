@@ -1,6 +1,7 @@
 """Keep high-level consumer examples free of setup and publication shell scripts."""
 
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import tempfile
@@ -16,6 +17,24 @@ def load(name):
 
 
 class ReleaseExamples(unittest.TestCase):
+    def test_usage_examples_use_default_cli_version(self):
+        sources = [ROOT / "README.md", *ROOT.glob("*/README.md"),
+                   *ROOT.glob("docs/*.md"), *ROOT.glob("examples/github-actions/*.yml")]
+        for source in sources:
+            text = source.read_text()
+            blocks = re.findall(r"```yaml\n(.*?)```", text, re.DOTALL) if source.suffix == ".md" else [text]
+            for block in blocks:
+                workflow = yaml.load(block, Loader=yaml.BaseLoader)
+                jobs = workflow.get("jobs", {"example": workflow})
+                for job in jobs.values():
+                    for step in job.get("steps", []):
+                        name = step.get("uses", "").split("@", 1)[0]
+                        if (name not in ("changenote/action", "{{action-path}}")
+                                and not name.startswith("changenote/action/")):
+                            continue
+                        with self.subTest(source=source.relative_to(ROOT), uses=step["uses"]):
+                            self.assertNotIn("version", step.get("with", {}))
+
     def test_minimal_workflow_only_needs_checkout_and_action_inputs(self):
         workflow = load("release.yml")
         self.assertEqual(workflow["permissions"], {"contents": "read"})
@@ -71,7 +90,7 @@ class ReleaseExamples(unittest.TestCase):
             text = (ROOT / "examples/github-actions" / name).read_text()
             self.assertNotIn("scripts/action/", text)
             self.assertNotIn("setup-changenote", text)
-            self.assertNotIn("VERSION", text.replace("CHANGENOTE_NODE_VERSION", "").replace("CHANGENOTE_NPM_VERSION", "").replace("CHANGENOTE_CLI_VERSION", ""))
+            self.assertNotIn("VERSION", text.replace("CHANGENOTE_NODE_VERSION", "").replace("CHANGENOTE_NPM_VERSION", ""))
 
     @unittest.skipUnless(shutil.which("actionlint"), "actionlint is not on PATH")
     def test_workflows_lint_with_consumer_workflow_contracts(self):

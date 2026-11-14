@@ -35,9 +35,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: "{{action-path}}@<full-action-commit-sha>"
-        with:
-          version: 'v0.13.0'
-          # Add required inputs from action.yml.
+        # Add a with: block for required inputs from action.yml.
 ```
 
 {{Prerequisites or warnings needed for this example.}}

@@ -22,7 +22,6 @@ jobs:
       - uses: changenote/action/prepare@<full-action-commit-sha>
         with:
           base-branch: main
-          version: 'v0.13.0'
           operation: manage-pr
 ```
 

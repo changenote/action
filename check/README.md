@@ -22,7 +22,6 @@ jobs:
           persist-credentials: false
       - uses: changenote/action/check@<full-action-commit-sha>
         with:
-          version: 'v0.13.0'
           since: refs/remotes/origin/${{ github.base_ref }}
 ```
 
