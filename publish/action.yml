@@ -2,7 +2,7 @@ name: Changenote Publish
 description: Publish annotated tags and GitHub Releases from the latest validated batch (Linux).
 inputs:
   version:
-    description: Changenote CLI version to install from crates.io. Use latest or an exact stable version.
+    description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
     default: latest
   github-token:
     description: Token with contents write permission.
@@ -29,10 +29,10 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+    - name: Set up uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       with:
-        toolchain: stable
+        enable-cache: false
     - name: Install changenote CLI
       shell: bash
       env:

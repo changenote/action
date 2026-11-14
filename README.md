@@ -10,18 +10,21 @@ GitHub Actions for [changenote](https://github.com/changenote/changenote) releas
 | `changenote/action/preview` | Inspect the latest validated publication batch without remote writes. | Installs the selected CLI. |
 | `changenote/action/publish` | Publish tags and GitHub Releases for a validated batch. | Installs the selected CLI. |
 
-All five Actions accept `version`, the changenote CLI version to install from crates.io.
+All five Actions accept `version`, the changenote CLI version to install from PyPI with uv.
 It defaults to `latest`, the latest stable published version. Use an exact version for repeatable runs:
 
 ```yaml
 - uses: changenote/action/release@<full-action-commit-sha>
   with:
-    version: '0.11.0'
+    version: 'v0.1.0'
 ```
 
-A leading `v` is also accepted. Version ranges, Git revisions, and prereleases are not accepted.
-Each Action sets up Rust and installs the selected CLI outside the consumer checkout.
+Exact versions require the `v` prefix and must be published on PyPI.
+Bare versions, version ranges, Git revisions, and prereleases are rejected.
+Each Action sets up uv and installs a prebuilt CLI wheel outside the consumer checkout.
+CLI installation does not require Rust and does not fall back to a source build.
 The Action does not pin a CLI version; pinning the Action SHA alone does not pin `latest`.
+Use a PyPI version that supports your configuration; see [Published CLI compatibility](docs/development.md#published-cli-compatibility).
 
 ## Release workflow
 

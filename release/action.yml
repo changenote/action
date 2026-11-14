@@ -2,7 +2,7 @@ name: Changenote Release
 description: Set up changenote and manage, select, or publish releases from package configuration (Linux).
 inputs:
   version:
-    description: Changenote CLI version to install from crates.io. Use latest or an exact stable version.
+    description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
     default: latest
   operation:
     description: auto, manage-pr, select, publish, or retry-publication. auto manages PRs and publishes pending batches on pushes; on manual runs it only manages PRs.
@@ -26,10 +26,10 @@ inputs:
     description: Exact npm version. Empty uses the npm bundled with Node.js.
     default: ''
   rust-toolchain:
-    description: Rust toolchain for CLI installation and configured Cargo lockfiles.
+    description: Rust toolchain for configured Cargo lockfiles; not needed for CLI installation.
     default: stable
   uv-version:
-    description: uv version for configured uv lockfiles. Empty uses setup-uv's default.
+    description: uv version for CLI installation and configured uv lockfiles. Empty uses setup-uv's default.
     default: ''
   commit-message:
     description: Release commit message.
@@ -82,16 +82,16 @@ runs:
         INPUT_NPM_VERSION: ${{ inputs.npm-version }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/../scripts/action/release.sh" validate
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+    - name: Set up uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       with:
-        toolchain: ${{ inputs.rust-toolchain }}
+        enable-cache: false
+        version: ${{ inputs.uv-version }}
     - name: Install changenote CLI
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_VERSION: ${{ inputs.version }}
-        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
     - name: Discover release environments
       id: environment
@@ -104,6 +104,11 @@ runs:
         INPUT_EXPECTED_RELEASE_COMMIT: ${{ inputs.expected-release-commit }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/../scripts/action/release-environment.sh" discover
+    - name: Set up Rust
+      if: steps.environment.outputs.cargo == 'true'
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      with:
+        toolchain: ${{ inputs.rust-toolchain }}
     - uses: actions/setup-node@v7
       if: steps.environment.outputs.npm == 'true'
       with:
@@ -115,10 +120,6 @@ runs:
       env:
         INPUT_NPM_VERSION: ${{ inputs.npm-version }}
       run: npm install --global --ignore-scripts --no-audit --no-fund "npm@$INPUT_NPM_VERSION"
-    - uses: astral-sh/setup-uv@v7
-      if: steps.environment.outputs.uv == 'true'
-      with:
-        version: ${{ inputs.uv-version }}
     - name: Populate offline package caches
       id: warm
       shell: bash

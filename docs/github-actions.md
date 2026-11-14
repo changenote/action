@@ -22,7 +22,7 @@ Use `changenote/action@<full-action-commit-sha>` to manage version PRs and run o
 See [the command-hook workflow](../examples/github-actions/command-hooks.yml).
 Replace all SHA placeholders with reviewed compatible full commit SHAs.
 The root Action needs Bash, Git, `gh`, `jq`, and Python 3 on Linux. Ubuntu runners provide these tools.
-It installs the CLI from crates.io using `version` and sets up Rust and uv for its own runtime.
+It sets up uv and installs a CLI wheel from PyPI using `version`. CLI installation needs no Rust toolchain.
 It does not prepare the project's runtime or dependencies.
 Prepare supported lockfile tools and caches for PR generation and release replay as described in [automatic lockfile synchronization](https://github.com/changenote/changenote/blob/main/docs/configuration.md#automatic-lockfile-synchronization).
 Never build the trusted CLI from a contributor PR.
@@ -35,7 +35,7 @@ If generated PRs must start CI, use a GitHub App token or PAT through `github-to
 
 | Optional input | Default | Execution |
 | --- | --- | --- |
-| `version` | `latest` | Install the latest stable CLI from crates.io, or an exact version such as `0.11.0`. |
+| `version` | `latest` | Install the latest stable CLI from PyPI, or an exact version with a required `v` prefix, such as `v0.9.2`. |
 | `publish-script` | Empty | Publish packages after managed-merge and full-tree verification. |
 | `release-script` | Empty | Create tags, assets, or a GitHub Release after successful `publish-script`, or directly if it is absent. |
 
@@ -174,19 +174,19 @@ Do not merge another Release PR until the current batch and downstream artifacts
 
 ## Tool setup
 
-All five Actions install the CLI from crates.io with `cargo install --registry crates-io --locked`.
-The `version` input defaults to `latest`, the latest stable published version.
-An exact version such as `0.11.0` or `v0.11.0` adds `--version '=0.11.0'`.
-Ranges, Git revisions, URLs, and prereleases are rejected before installation.
+All five Actions install a prebuilt CLI wheel from PyPI with `uv tool install`.
+The `version` input defaults to `latest`, the latest stable published PyPI version.
+An exact version must have a `v` prefix, such as `v0.9.2`; it selects the requirement `changenote==0.9.2`.
+Bare versions, ranges, Git revisions, URLs, and prereleases are rejected before installation.
 The Action verifies the installed version before adding it to `PATH`; it never falls back to a caller-installed CLI after failure.
 
 Installation runs in a new runner temporary directory, not the consumer checkout.
-It builds published crate source, not Action source or contributor code, and does not load the consumer's Cargo configuration.
-GitHub token variables are removed from the Cargo installation process.
-The `rust-toolchain` input selects Rust for `/release` CLI installation and Cargo lockfile work.
-Other Actions set up stable Rust for their CLI installation.
+uv uses an isolated tool environment with project configuration, source overrides, and source builds disabled.
+GitHub token variables are removed from installation.
+The `uv-version` input selects uv for `/release` CLI installation and project uv lockfiles.
+The `rust-toolchain` input is only used when configured Cargo lockfiles require Rust.
 There is no Action-managed executable cache; `latest` is resolved again for each invocation.
-Installation needs access to Rust distribution servers and crates.io.
+Installation needs access to uv distribution servers and PyPI, and a compatible wheel must exist.
 CI tests the latest published CLI; see [Development](development.md#cli-installation).
 Use the same exact `version` across PR generation, selection, and publication when reproducible replay is required.
 
@@ -239,15 +239,15 @@ They create Git tags and GitHub Releases, not registry artifacts.
 
 | Input | Default | Rule |
 | --- | --- | --- |
-| `version` | `latest` | CLI version from crates.io; latest stable or an exact stable version. |
+| `version` | `latest` | CLI version from PyPI; latest stable or an exact stable version with a required `v` prefix. |
 | `github-token` | `github.token` | Use the permissions required by the operation. |
 | `base-branch` | Repository default branch | The triggering ref must be this branch. |
 | `expected-release-commit` | Empty | Required for `publish`; full lowercase 40-character commit SHA. Rejected for other operations. |
 | `retry` | `false` | With `select` on a manual event, include completed batches for downstream retries. |
 | `node-version` | `lts/*` | Used when a configured npm lockfile needs preparation. |
 | `npm-version` | Bundled npm | Optional exact stable version, such as `11.20.0`. |
-| `rust-toolchain` | `stable` | Used for CLI compilation and Cargo lockfile work. |
-| `uv-version` | setup-uv default | Used when a configured uv lockfile needs preparation. |
+| `rust-toolchain` | `stable` | Used only for configured Cargo lockfile work. |
+| `uv-version` | setup-uv default | Used for CLI installation and configured uv lockfile preparation. |
 | `commit-message` | `chore(release): version packages` | Release commit message. |
 | `pr-title` | `chore(release): version packages` | Managed PR title. |
 

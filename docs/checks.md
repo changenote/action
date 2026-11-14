@@ -32,9 +32,9 @@ Branch names enter the shell through an environment variable, not inline express
 
 ## GitHub Action report
 
-Use the check Action after checkout. It sets up stable Rust and installs changenote from crates.io.
+Use the check Action after checkout. It sets up uv and installs a prebuilt changenote wheel from PyPI.
 Replace the Action placeholder with a reviewed full SHA.
-`version` defaults to `latest`, the latest stable published CLI; use an exact version for repeatable checks.
+`version` defaults to `latest`, the latest stable PyPI CLI; use an exact version with the required `v` prefix for repeatable checks.
 
 ```yaml
 permissions:
@@ -52,7 +52,7 @@ steps:
 
 Run this job on `pull_request`, not a privileged event that executes contributor code.
 The Action requires Linux, Bash, Git, `jq`, a clean repository root, and sufficient local history.
-CLI installation needs network access to Rust distribution servers and crates.io.
+CLI installation needs network access to uv distribution servers and PyPI. A compatible wheel must be published; no Rust or source build is used.
 After setup, the check does not fetch, build contributor code, run project package managers, post comments, or require a write token.
 Do not install the CLI from the PR revision. The checkout step needs read permission; the reporting script uses no GitHub token.
 

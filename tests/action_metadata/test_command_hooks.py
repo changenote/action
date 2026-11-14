@@ -35,7 +35,7 @@ class CommandHookMetadata(unittest.TestCase):
 
     def test_router_tool_setup_is_pinned_and_does_not_build_a_consumer_cli(self):
         steps = self.action["runs"]["steps"]
-        self.assertEqual(len(steps), 4)
+        self.assertEqual(len(steps), 3)
         self.assertRegex(steps[0]["uses"], r"^astral-sh/setup-uv@[0-9a-f]{40}$")
         self.assertEqual(steps[0]["with"]["enable-cache"], "false")
         text = (ROOT / "action.yml").read_text()

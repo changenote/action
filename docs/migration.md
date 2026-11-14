@@ -28,16 +28,17 @@ See [Action releases](development.md#action-releases) for version PRs and public
 
 ## CLI version selection
 
-All five Actions now install changenote from crates.io.
-`version` defaults to `latest`, the latest stable published CLI; an exact stable version with an optional `v` prefix is also accepted.
+All five Actions now install a changenote wheel from PyPI through uv.
+`version` defaults to `latest`, the latest stable PyPI release; exact stable versions require a `v` prefix, such as `v0.9.2`.
 The Action repository no longer stores a CLI source pin.
 Remove separate CLI installation steps from caller workflows after adopting this implementation.
 Use the same exact `version` across release jobs when repeatable replay is required.
 
-Installation builds registry source in an isolated runner temporary directory, not Action or consumer source.
-Each Action sets up Rust; `/release` retains its `rust-toolchain` input.
+Installation uses an isolated runner temporary tool environment, with source builds and project configuration disabled.
+Each Action sets up uv. `/release` retains `rust-toolchain` only for configured Cargo lockfiles.
 There is no Action-managed executable cache that can retain an outdated `latest` resolution.
-CI installs the latest published CLI; integration tests use that executable on `PATH`.
+CI installs the latest published PyPI CLI; integration tests use that executable on `PATH`.
+Registry versions can differ; see [Published CLI compatibility](development.md#published-cli-compatibility) before adoption.
 See [Development](development.md#cli-installation) for local setup.
 
 Existing full-SHA references still execute their historical setup, including its old CLI pin.

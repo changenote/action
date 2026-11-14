@@ -2,7 +2,7 @@ name: Changenote Release PR
 description: Manage version PRs and run optional publish and release scripts after a verified managed merge (Linux).
 inputs:
   version:
-    description: Changenote CLI version to install from crates.io. Use latest or an exact stable version.
+    description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
     default: latest
   github-token:
     description: Token with contents and pull requests write permissions.
@@ -41,14 +41,10 @@ outputs:
 runs:
   using: composite
   steps:
-    - name: Set up router runtime
+    - name: Set up uv
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       with:
         enable-cache: false
-    - name: Set up Rust
-      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-      with:
-        toolchain: stable
     - name: Install changenote CLI
       shell: bash
       env:

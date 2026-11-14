@@ -59,10 +59,13 @@ class Metadata(unittest.TestCase):
                 prefix = "" if path == "action.yml" else "../"
                 self.assertEqual(install["run"], f'bash "$ACTION_PATH/{prefix}scripts/action/install-cli.sh"')
                 run = next(step for step in steps if step.get("id") == operation)
-                rust = next(step for step in steps if step.get("uses", "").startswith("dtolnay/"))
-                self.assertRegex(rust["uses"], r"^dtolnay/rust-toolchain@[0-9a-f]{40}$")
-                self.assertLess(steps.index(rust), steps.index(install))
+                uv = next(step for step in steps if step.get("uses", "").startswith("astral-sh/setup-uv@"))
+                self.assertRegex(uv["uses"], r"^astral-sh/setup-uv@[0-9a-f]{40}$")
+                self.assertNotIn("if", uv)
+                self.assertLess(steps.index(uv), steps.index(install))
                 self.assertLess(steps.index(install), steps.index(run))
+                if path != "release/action.yml":
+                    self.assertFalse(any(step.get("uses", "").startswith("dtolnay/") for step in steps))
 
     def test_inputs_outputs_and_composite_paths(self):
         fixture = test_actions.Actions("test_no_batch")

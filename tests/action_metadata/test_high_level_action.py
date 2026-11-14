@@ -46,9 +46,9 @@ class ReleaseMetadata(unittest.TestCase):
     def test_setup_order_and_selected_cli_installation(self):
         labels = [step.get("name", step.get("uses")) for step in self.steps]
         self.assertEqual(labels, [
-            "Validate release inputs", "Set up Rust", "Install changenote CLI",
-            "Discover release environments", "actions/setup-node@v7", "Install selected npm version",
-            "astral-sh/setup-uv@v7", "Populate offline package caches", "Run release operation",
+            "Validate release inputs", "Set up uv", "Install changenote CLI",
+            "Discover release environments", "Set up Rust", "actions/setup-node@v7",
+            "Install selected npm version", "Populate offline package caches", "Run release operation",
         ])
         self.assertFalse(any(step.get("id") == "cache" for step in self.steps))
         install = self.step("Install changenote CLI")
@@ -57,7 +57,8 @@ class ReleaseMetadata(unittest.TestCase):
         self.assertEqual(install["env"]["INPUT_VERSION"], "${{ inputs.version }}")
         rust = next(step for step in self.steps if step.get("uses", "").startswith("dtolnay/"))
         self.assertEqual(rust["with"]["toolchain"], "${{ inputs.rust-toolchain }}")
-        self.assertNotIn("if", rust)
+        self.assertEqual(rust["if"], "steps.environment.outputs.cargo == 'true'")
+        self.assertLess(labels.index("Discover release environments"), labels.index("Set up Rust"))
         for name, script, operation in (
             ("Validate release inputs", "release.sh", "validate"),
             ("Discover release environments", "release-environment.sh", "discover"),
@@ -73,8 +74,9 @@ class ReleaseMetadata(unittest.TestCase):
         self.assertEqual(node["with"], {
             "node-version": "${{ inputs.node-version }}", "package-manager-cache": "false",
         })
-        self.assertEqual(uv["if"], "steps.environment.outputs.uv == 'true'")
-        self.assertEqual(uv["with"]["version"], "${{ inputs.uv-version }}")
+        self.assertNotIn("if", uv)
+        self.assertEqual(uv["with"], {"version": "${{ inputs.uv-version }}", "enable-cache": "false"})
+        self.assertLess(self.steps.index(uv), self.steps.index(self.step("Install changenote CLI")))
         npm = self.step("Install selected npm version")
         self.assertEqual(npm["if"], "steps.environment.outputs.npm == 'true' && inputs.npm-version != ''")
         self.assertEqual(npm["env"], {"INPUT_NPM_VERSION": "${{ inputs.npm-version }}"})
@@ -94,9 +96,9 @@ class ReleaseMetadata(unittest.TestCase):
         for key in ("operation", "expected-release-commit", "retry", "npm-version", "rust-toolchain"):
             self.assertEqual(validate["env"]["INPUT_" + key.upper().replace("-", "_")], "${{ inputs." + key + " }}")
         self.assertNotIn("GH_TOKEN", validate["env"])
-        for name in ("Install changenote CLI",):
-            self.assertNotIn("GH_TOKEN", self.step(name)["env"])
-            self.assertEqual(self.step(name)["env"]["INPUT_RUST_TOOLCHAIN"], "${{ inputs.rust-toolchain }}")
+        install = self.step("Install changenote CLI")
+        self.assertNotIn("GH_TOKEN", install["env"])
+        self.assertNotIn("INPUT_RUST_TOOLCHAIN", install["env"])
         for name in ("Discover release environments", "Populate offline package caches", "Run release operation"):
             env = self.step(name)["env"]
             self.assertEqual(env["INPUT_OPERATION"], "${{ steps.inputs.outputs.operation }}")

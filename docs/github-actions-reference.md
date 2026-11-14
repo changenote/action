@@ -18,8 +18,8 @@ For contributor PRs, use the read-only [check Action](checks.md#github-action-re
 
 The Release PR and publication Actions require Linux, Bash, Git, `gh`, `jq`, and a clean checkout.
 Ubuntu GitHub-hosted runners include these tools.
-Each Action sets up stable Rust and installs changenote from crates.io.
-`version` defaults to `latest`; use an exact stable version for reproducible runs.
+Each Action sets up uv and installs a prebuilt changenote wheel from PyPI.
+`version` defaults to `latest`; use an exact stable version with a required `v` prefix, such as `v0.9.2`, for reproducible runs.
 
 - Run at the repository root.
   - Action scripts come from the Action checkout, not the consumer repository.
@@ -94,7 +94,7 @@ PRs created with the default `GITHUB_TOKEN` do not automatically trigger PR work
 
 ## Publication preview
 
-The preview Action requires Linux, Bash, Git, `gh`, `jq`, and standard coreutils. It installs the selected CLI from crates.io. It needs only `contents: read`. It reads the selected remote branch in a temporary repository; the caller's files, index, refs, tags, and Git identity are unchanged. A dirty or stale source checkout does not select the release. Temporary fetches and release-tree reconstruction are removed on success and failure.
+The preview Action requires Linux, Bash, Git, `gh`, `jq`, and standard coreutils. It installs the selected CLI wheel from PyPI through uv. It needs only `contents: read`. It reads the selected remote branch in a temporary repository; the caller's files, index, refs, tags, and Git identity are unchanged. A dirty or stale source checkout does not select the release. Temporary fetches and release-tree reconstruction are removed on success and failure.
 
 ```yaml
 name: Publication preview
@@ -157,7 +157,7 @@ To retry custom scripts, re-run the original eligible workflow. A newer batch bl
 
 | Action | Input | Default |
 | --- | --- | --- |
-| All five Actions | `version` | `latest`; or an exact stable CLI version from crates.io |
+| All five Actions | `version` | `latest`; or an exact stable PyPI CLI version with a required `v` prefix |
 | Release PR, Publication, Preview | `github-token` | Workflow token |
 | Release PR, Publication, Preview | `base-branch` | Repository default branch |
 | Release PR | `commit-message` | `chore(release): version packages` |

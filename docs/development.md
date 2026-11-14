@@ -20,31 +20,34 @@ The CLI and its crates.io and PyPI publication remain in [changenote/changenote]
 
 ## CLI installation
 
-All five public Actions accept `version` and install changenote from crates.io.
+All five public Actions accept `version` and install changenote from PyPI through uv.
 The default `latest` selects the latest stable published CLI; the repository stores no CLI version or source-revision pin.
-Use an exact stable version, with an optional leading `v`, for repeatable runs.
-Version ranges, URLs, Git revisions, and prereleases are rejected.
+Use an exact stable version with the required `v` prefix, such as `v0.9.2`, for repeatable runs.
+Bare versions, version ranges, URLs, Git revisions, and prereleases are rejected.
 `version` selects the CLI, not the Action's own `VERSION` file.
 
-From the Action repository root, install the latest stable CLI with Rust and Cargo:
+From the Action repository root, install the latest stable CLI with uv:
 
 ```sh
-cargo install --registry crates-io --locked changenote
-export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
+uv tool install --no-config --no-build --default-index https://pypi.org/simple --prerelease disallow changenote
+export PATH="$(uv tool dir --bin):$PATH"
 changenote --version
 ```
 
-For an exact version, use `cargo install --registry crates-io --locked --version '=0.11.0' changenote`.
+For an exact version, use `uv tool install --no-config --no-build --default-index https://pypi.org/simple 'changenote==0.9.2'`.
+The Action converts `version: 'v0.9.2'` to that package requirement.
 CI runs the shared installer with `INPUT_VERSION=latest` before the integration tests.
 Tests use the installed executable on `PATH`, not an Action-local Cargo build or a sibling repository.
 
-The Actions set up Rust and install into a new runner temporary directory.
-`/release` uses its `rust-toolchain` input; the other Actions use stable Rust.
-The installer runs outside the consumer checkout, removes GitHub token variables, and does not load consumer Cargo configuration or build consumer source.
+The Actions set up uv and install a prebuilt wheel into a new runner temporary tool environment.
+`/release` uses `uv-version` for CLI installation and configured uv lockfiles.
+It sets up Rust with `rust-toolchain` only when configured Cargo lockfiles require it.
+The other Actions do not install Rust for the CLI.
+The installer runs outside the consumer checkout, removes GitHub token variables, and disables project configuration, source overrides, source builds, and prereleases.
 The selected executable is verified before its directory is added to `GITHUB_PATH`.
 Installation failure does not fall back to an executable already on `PATH`.
 There is no Action-managed CLI executable cache; default `latest` is resolved on each invocation.
-Registry installation and Rust setup need network access.
+uv setup and wheel installation need network access. A missing version or compatible wheel fails without a Cargo/source-build fallback.
 
 For reproducible version PRs, selection, and publication, use the same exact CLI version in every job.
 A reviewed Action SHA alone does not freeze the CLI when `version` is `latest`.
@@ -67,7 +70,17 @@ uv run --no-project --with pyyaml python -m unittest discover -s tests/action_me
 
 Tests use temporary consumer repositories and a file-backed GitHub mock.
 They do not push hosted tags, create hosted Releases, or upload registry packages.
-Installer unit tests use a Cargo stub to check version arguments, consumer isolation, and failure handling without downloads.
+Installer unit tests use a uv stub to check version requirements, consumer isolation, executable links, and failure handling without downloads.
+CI retains Rust for Cargo lockfile integration fixtures, not CLI installation.
+
+## Published CLI compatibility
+
+PyPI and crates.io can publish different CLI versions. The default follows PyPI, not crates.io or Git main.
+During this change, the latest PyPI release is `0.9.2`, while crates.io provides `0.11.0`.
+PyPI `0.9.2` cannot parse Swift `.xcconfig` version files; the three existing Swift integration tests fail with that release.
+Do not skip those tests or use a different registry as a silent fallback.
+A CLI maintainer must separately publish compatible wheels before the full suite and that feature can pass with this installation route.
+Selecting an unpublished version fails; the Action does not build it from Git or Cargo.
 
 ## Action releases
 
@@ -109,7 +122,7 @@ For an unexpected CLI change with `latest`, select an exact version in the calle
 
 ## Verification limits
 
-Local checks do not verify hosted Rust setup, registry access from runners, package caches, fork events, token scopes, branch rules, or deployment approvals.
+Local checks do not verify hosted uv setup, registry access from runners, project tool setup, package caches, fork events, token scopes, branch rules, or deployment approvals.
 A maintainer must test these settings in an authorized disposable repository before production use.
 No release or remote upload is approved by this guide.
 For repository publication order and production pins, see [Migration](migration.md).
