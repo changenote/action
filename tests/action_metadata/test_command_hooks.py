@@ -15,7 +15,8 @@ class CommandHookMetadata(unittest.TestCase):
     def test_only_two_optional_commands_extend_the_existing_inputs(self):
         self.assertEqual(set(self.action["inputs"]), {
             "version", "github-token", "base-branch", "commit-message", "pr-title",
-            "publish-script", "release-script", "cli-path", "operation", "prepare",
+            "publish-script", "release-script", "cli-path", "prepare",
+            "push-git-tags", "create-github-releases", "pr-draft",
             "node-version", "npm-version",
             "rust-toolchain", "uv-version",
         })
@@ -25,7 +26,9 @@ class CommandHookMetadata(unittest.TestCase):
             "has-notes", "pr-number", "pr-operation", "release-commit", "releases",
             "published", "published-packages", "publication-plan", "publication-needed", "ready",
         })
-        self.assertEqual(self.action["inputs"]["operation"]["default"], "hooks")
+        self.assertNotIn("operation", self.action["inputs"])
+        for key in ("create-github-releases", "push-git-tags"):
+            self.assertEqual(self.action["inputs"][key]["default"], "false")
 
     def test_command_and_token_inputs_are_environment_data(self):
         step = next(s for s in self.action["runs"]["steps"] if s.get("id") == "version")
@@ -43,7 +46,7 @@ class CommandHookMetadata(unittest.TestCase):
         self.assertEqual(uv["with"]["enable-cache"], "false")
         for name in ("Discover release environments", "Populate offline package caches"):
             step = next(step for step in steps if step.get("name") == name)
-            self.assertIn("inputs.operation != 'hooks'", step["if"])
+            self.assertEqual(step["if"], "inputs.prepare == 'true'")
         text = (ROOT / "action.yml").read_text()
         self.assertNotIn("cargo install", text)
         self.assertIn("npm install --global --ignore-scripts", text)

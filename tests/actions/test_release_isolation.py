@@ -154,7 +154,7 @@ class ReleaseIsolation(unittest.TestCase):
         f.note()
         # No input selects stable. Warm and PR generation must both ignore the file.
         self.environment("warm", "manage-pr")
-        f.env.update(INPUT_OPERATION="auto", GITHUB_EVENT_NAME="workflow_dispatch")
+        f.env.update(GITHUB_EVENT_NAME="workflow_dispatch")
         _, out = f.action("release")
         self.assertEqual(out["pr-operation"], "created")
         f.git("fetch", "origin", test_actions.BRANCH)

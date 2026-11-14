@@ -153,6 +153,20 @@ class ConfigPolicies(unittest.TestCase):
                     self.assertEqual(f.state()["releases"], [])
                     self.assertEqual(f.git("--git-dir=" + str(f.remote), "tag"), "")
 
+    def test_disabled_changelog_supports_root_tags_only(self):
+        self.config(changelog={"enabled": False})
+        self.f.git("push", "origin", "main")
+        sha = self.f.release()
+        event = self.f.top / "event.json"
+        event.write_text('{"forced": false, "deleted": false}')
+        self.f.env.update(INPUT_GITHUB_TOKEN="test-token", INPUT_PUSH_GIT_TAGS="true",
+                          GITHUB_EVENT_NAME="push", GITHUB_REF="refs/heads/main",
+                          GITHUB_EVENT_PATH=str(event))
+        _, out = self.f.action("release")
+        self.assertEqual(out["release-commit"], sha)
+        self.assertEqual(out["published"], "true")
+        self.assertEqual(self.f.state()["releases"], [])
+
     def test_later_disabled_output_does_not_block_an_older_enabled_batch(self):
         f = self.f
         f.release()

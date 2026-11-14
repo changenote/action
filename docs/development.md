@@ -5,7 +5,7 @@ The CLI and its crates.io and PyPI publication remain in [changenote/changenote]
 
 ## Repository layout
 
-- `action.yml`: root workflow orchestration; `hooks` (default) or `auto`.
+- `action.yml`: one root pipeline; PR-only by default, with optional scripts and explicit tag/Release controls.
 - `setup/action.yml`: CLI installation with same-job path and exact-version outputs.
 - `prepare/action.yml`: project tools and offline caches without PR or publication writes.
 - `manage-pr/action.yml`: release PR lifecycle only.
@@ -96,12 +96,12 @@ CI validates the plan with the installed CLI.
 The first version PR generates `CHANGELOG.md` and `.changenote/releases.json`, updates `VERSION`, and consumes the initial note.
 Those generated files are not created by this setup change.
 
-The repository's Release workflow uses the root `./` Action with an explicit operation after checking out `${{ github.sha }}`.
+The repository's Release workflow uses the root `./` Action with both publication controls explicitly true after checking out `${{ github.sha }}`.
 This runs the Action from the same commit as the checkout, without a separate Action SHA update.
 It accepts the `version` input and defaults to `latest`, the latest stable published CLI.
 External Action dependencies remain pinned to full commit SHAs.
 
-On pushes to `main`, `auto` manages the version PR and publishes incomplete validated batches.
+On pushes to `main`, root manages the version PR and completes requested tags and GitHub Releases for validated batches.
 Merge the version PR only after review; the following main push publishes its `v<version>` tag and GitHub Release.
 The workflow never approves or merges its own PR.
 The root Action does not run or wait for project CI; use PR review and branch rules before merging a version PR.
@@ -121,6 +121,52 @@ Adding or testing this setup does not authorize `changenote version`, `changenot
 To stop release automation, disable the workflow before recovery.
 Inspect remote publication state before a retry; never move existing tags or replace published artifacts automatically.
 For an unexpected CLI change with `latest`, select an exact version in the caller workflow.
+
+## Root release controls verification
+
+The candidate starts from `51cbfee2492850a8a5f3e131572c07914dd2f84a` (the previous reviewed Action SHA).
+Before edits, the tracked diff was empty (SHA-256 `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`).
+Only the user-supplied plan was untracked. No external consumer pins were changed.
+
+Published PyPI CLI `0.13.0` was tested in a disposable repository without Git worktrees.
+With changelog output disabled, the committed metadata-only batch tagged successfully (exit 0).
+The annotated `v1.0.1` peeled to release commit `1b2deaafdaac0f28a2169fb206431b86ef47fd5d`; no changelog existed.
+`release-notes --package=probe --version 1.0.1` failed (exit 1) because changelog output was disabled.
+An initial tag attempt with an untracked probe log failed the clean-tree check; the clean retry above passed.
+No upstream change, source installation, or tag-generation fallback is needed.
+
+Validation tools: changenote `0.13.0`, uv `0.13.5`, PyYAML `6.0.3`, jq `1.8.1`, ShellCheck `0.11.0`, actionlint `1.7.11`, and zizmor `1.32.0`.
+Missing tools were installed outside the repository.
+Bash syntax, ShellCheck, actionlint, offline zizmor, `changenote status`, and `git diff --check` passed.
+The 61 non-worktree metadata checks passed locally, including Markdown paths/anchors and YAML example contracts.
+
+[Implementation CI](https://github.com/changenote/action/actions/runs/43598901257) passed 215 integration tests and all 62 metadata tests (both exit 0) at `683d59965ff2874069ccc8f9595bd51e173d6679`.
+CI selected published PyPI CLI `0.13.1` through the unchanged `latest` policy; the local compatibility probe used `0.13.0`.
+The first CI run found six failures in remaining old-mode fixtures and private token fallback. These were corrected before the passing runs; no required gate was waived.
+The full diff was reviewed for correctness, security, lifecycle safety, compatibility, regressions, and scope. Wrong-branch rejection has explicit coverage even with preparation disabled.
+
+The verified source/test diff SHA-256 is `89840be752e6ab886c841d5aa7f591c875a7fa72e84acfbadea7f1d92395bbc1`:
+
+```sh
+git diff --binary 51cbfee2492850a8a5f3e131572c07914dd2f84a -- action.yml manage-pr/action.yml scripts/action tests | sha256sum
+```
+
+Documentation-only evidence updates do not change this identity.
+[PR checks](https://github.com/changenote/action/pull/11/checks) retain complete test results for the final revision.
+
+The full integration suite and the metadata consumer-checkout smoke test create disposable Git worktrees.
+They require an authorized runner; this agent session prohibits worktree creation.
+Automatic pull-request CI runs both complete suites without hosted publication.
+Review its full results, CLI version, exit status, and tested commit before plan completion.
+Focused metadata checks can run locally without the consumer-checkout smoke test; these do not replace full CI evidence.
+
+Hosted validation remains a separate handoff to the repository maintainer and registry/project owner.
+After separate authorization, use a disposable repository, a reviewed candidate, and owner-configured credentials or Trusted Publishing.
+Exercise managed-merge routing, original-run retries, draft PR creation/conversion, selected tag/Release scopes, and an explicitly approved registry upload.
+Mocks do not prove event delivery, branch rules, token scopes, hosted tool setup, OIDC, registry ownership, or upload success.
+Do not roll out to production or upload registry packages based only on these checks. Do not send secrets through chat.
+No release workflow dispatch, version tag, package publication, or external pin migration is authorized.
+See [root migration and recovery](migration.md#root-release-controls) and [rollback rules](migration.md#rollback-and-recovery).
 
 ## Action composition verification
 

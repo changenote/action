@@ -28,11 +28,13 @@ class Composition(unittest.TestCase):
                 if "uses" in step:
                     self.assertRegex(step["uses"], r"^[^@\s]+@[0-9a-f]{40}$")
 
-    def test_root_has_only_workflow_modes_and_no_standalone_inputs(self):
+    def test_root_has_no_modes_or_standalone_inputs(self):
         root = metadata("")
-        self.assertEqual(root["inputs"]["operation"]["default"], "hooks")
-        self.assertEqual(root["inputs"]["operation"]["description"],
-                         "hooks manages PRs and runs trusted scripts after a managed merge; auto manages PRs and publishes pending batches on pushes. Manual runs only manage PRs.")
+        self.assertNotIn("operation", root["inputs"])
+        for key in ("mode", "scope", "environment-operation"):
+            self.assertNotIn(key, root["inputs"])
+        for key in ("create-github-releases", "push-git-tags"):
+            self.assertEqual(root["inputs"][key]["default"], "false")
         self.assertNotIn("retry", root["inputs"])
         self.assertNotIn("expected-release-commit", root["inputs"])
         self.assertEqual(set(root["outputs"]), {

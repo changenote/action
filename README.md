@@ -4,7 +4,7 @@ GitHub Actions for [changenote](https://github.com/changenote/changenote) note c
 
 | Entry point | Responsibility |
 | --- | --- |
-| [`changenote/action`](action.yml) | Complete workflow: `hooks` (default) or `auto`. |
+| [`changenote/action`](action.yml) | Manage PRs; opt in to scripts, tags, and Releases. |
 | [`changenote/action/setup`](setup/README.md) | Install the CLI and return its exact version and same-job path. |
 | [`changenote/action/prepare`](prepare/README.md) | Prepare project tools and offline lockfile caches, without PR or publication writes. |
 | [`changenote/action/check`](check/README.md) | Check contributor PR note coverage with read-only permissions. |
@@ -17,7 +17,9 @@ All Actions support Linux.
 ## Breaking API changes
 
 Action v0.1.0 removes the former `release`, `select`, and `preview` paths without aliases.
-Root accepts only `hooks` and `auto`; use the standalone Actions for individual operations.
+The next breaking Action API removes root `operation`. Root now manages PRs by default.
+Enable `push-git-tags` and `create-github-releases` explicitly to retain full GitHub publication.
+See [root release controls](docs/migration.md#root-release-controls) before upgrading.
 See [Migration](docs/migration.md#composable-action-interfaces) before changing a production pin.
 
 ## Usage
@@ -49,12 +51,13 @@ jobs:
         with:
           base-branch: main
           version: 'v0.13.0'
-          operation: auto
+          push-git-tags: 'true'
+          create-github-releases: 'true'
 ```
 
-On push, `auto` manages the Release PR and publishes incomplete validated batches.
-On manual events, it only manages the PR.
-The default `hooks` mode manages PRs and runs optional trusted scripts after a verified managed merge; it does not enable built-in publication.
+This workflow manages the Release PR and completes requested tags and GitHub Releases on push.
+On manual events, it only manages the PR. Omit both publication controls for PR-only use.
+Optional scripts require a verified managed merge; see the [root guide](docs/github-actions.md#root-action-post-merge-commands).
 Actions never approve or merge their PRs.
 
 Built-in publication creates Git tags and GitHub Releases in the caller's repository, not registry uploads.
@@ -70,8 +73,8 @@ The Action's own release version in `VERSION` is independent of the CLI, and an 
 Installation needs network access and a compatible prebuilt wheel, with no Rust or source-build fallback.
 
 Use [Setup](setup/README.md) to reuse a trusted `cli-path` in the same job, and [Prepare](prepare/README.md) for project tools and offline caches.
-Root `auto` includes preparation by default; set `prepare: 'false'` after caller-owned preparation.
-For root `hooks`, prepare required project tools and caches before invocation.
+Root includes project preparation by default; set `prepare: 'false'` after caller-owned preparation.
+Custom build dependencies remain caller-owned.
 
 ## Recommended permissions
 

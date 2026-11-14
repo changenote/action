@@ -287,6 +287,12 @@ class Inspect(unittest.TestCase):
         self.assertIn("root commit", result.stderr)
         self.assertEqual(out["ready"], "false")
 
+    def test_standalone_does_not_accept_root_target_inputs(self):
+        self.f.release()
+        self.f.env.update(INPUT_CREATE_GITHUB_RELEASES="false", INPUT_PUSH_GIT_TAGS="false")
+        _, out = self.inspect()
+        self.assertEqual(json.loads(out["publication-plan"])[0]["action"], "create-tag-and-release")
+
     def test_parent_batch_symlink_is_rejected(self):
         self.f.note()
         (self.f.repo / "prior.json").write_text("keep")

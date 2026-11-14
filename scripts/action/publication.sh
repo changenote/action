@@ -3,6 +3,15 @@
 # shellcheck source=scripts/action/common.sh
 source "${BASH_SOURCE[0]%/*}/common.sh"
 
+# Internal worker arguments default to the standalone full-publication contract.
+publication_targets() {
+  create_releases=${1-true}
+  push_tags=${2-true}
+  [[ $create_releases == true || $create_releases == false ]] || fail 'create-github-releases must be true or false.'
+  [[ $push_tags == true || $push_tags == false ]] || fail 'push-git-tags must be true or false.'
+  [[ $create_releases == false || $push_tags == true ]] || fail 'create-github-releases requires push-git-tags.'
+}
+
 select_publication_notes() {
   local path
   local -A consumed=()
@@ -107,6 +116,7 @@ require_unchanged_publication_batch() {
 
 prepare_publication_notes() {
   [[ -n $release ]] || return 0
+  [[ $create_releases == true || $legacy_batch == true ]] || return 0
   # Validate every body before any remote writes, including later batch members.
   local item package version index=0
   mkdir -p "$temp/notes"
@@ -119,16 +129,26 @@ prepare_publication_notes() {
 }
 
 inspect_publication() {
-  gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$temp/releases.json"
-  jq -e 'type == "array" and length > 0 and all(.[]; type == "array" and all(.[]; (.tag_name | type == "string" and length > 0) and (.draft | type == "boolean")))' "$temp/releases.json" >/dev/null || fail 'Invalid GitHub release response.'
-  remote_git ls-remote --tags --refs "$remote_url" > "$temp/remote-tag-refs"
+  local inspect_releases=$create_releases inspect_tags=$push_tags
+  if [[ $legacy_batch == true ]]; then inspect_releases=true; inspect_tags=true; fi
   printf '[]\n' > "$temp/publication-plan.json"
+  ready=true
+  [[ $inspect_tags == true ]] || return 0
+  if [[ $inspect_releases == true ]]; then
+    gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/releases?per_page=100" > "$temp/releases.json"
+    jq -e 'type == "array" and length > 0 and all(.[]; type == "array" and all(.[]; (.tag_name | type == "string" and length > 0) and (.draft | type == "boolean")))' "$temp/releases.json" >/dev/null || fail 'Invalid GitHub release response.'
+  fi
+  remote_git ls-remote --tags --refs "$remote_url" > "$temp/remote-tag-refs"
   local item tag action conflicts has_release draft other_ref
   while IFS= read -r item; do
     tag=$(jq -r '.tag' <<< "$item")
     remote_tag "$tag"
-    has_release=$(jq --arg tag "$tag" 'any(.[][]; .tag_name == $tag)' "$temp/releases.json")
-    draft=$(jq --arg tag "$tag" 'any(.[][]; .tag_name == $tag and .draft)' "$temp/releases.json")
+    has_release=false
+    draft=false
+    if [[ $inspect_releases == true ]]; then
+      has_release=$(jq --arg tag "$tag" 'any(.[][]; .tag_name == $tag)' "$temp/releases.json")
+      draft=$(jq --arg tag "$tag" 'any(.[][]; .tag_name == $tag and .draft)' "$temp/releases.json")
+    fi
     conflicts='[]'
     while IFS=$'\t' read -r _ other_ref; do
       if [[ $other_ref == "refs/tags/$tag/"* || refs/tags/$tag == "$other_ref/"* ]]; then
@@ -145,8 +165,9 @@ inspect_publication() {
       conflicts=$(jq -c --arg reason "Existing release has no remote tag: $tag" '. + [$reason]' <<< "$conflicts")
     fi
     if [[ $conflicts != '[]' ]]; then action=conflict
-    elif [[ -z $tag_sha ]]; then action=create-tag-and-release
-    elif [[ $has_release == false ]]; then action=create-release
+    elif [[ -z $tag_sha && $inspect_releases == true ]]; then action=create-tag-and-release
+    elif [[ -z $tag_sha ]]; then action=create-tag
+    elif [[ $inspect_releases == true && $has_release == false ]]; then action=create-release
     else action=none
     fi
     jq --argjson item "$item" --arg action "$action" --argjson conflicts "$conflicts" \

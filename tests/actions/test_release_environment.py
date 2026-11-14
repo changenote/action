@@ -193,6 +193,7 @@ class ReleaseEnvironment(unittest.TestCase):
         event.write_text(json.dumps({"forced": False, "deleted": False}))
         self.fixture.env.update(
             INPUT_PR_ENVIRONMENT_READY=warm["pr-environment-ready"],
+            INPUT_PUSH_GIT_TAGS="true", INPUT_CREATE_GITHUB_RELEASES="true",
             GITHUB_EVENT_NAME="push", GITHUB_EVENT_PATH=str(event),
         )
         result, outputs = self.fixture.action("release", ok=False)
@@ -231,6 +232,15 @@ class ReleaseEnvironment(unittest.TestCase):
         self.run_environment("warm")
         self.assertFalse(self.calls.exists())
         self.assertTrue((f.repo / ".changenote/later-web.md").is_file())
+
+    def test_root_selected_batch_guard_applies_to_combined_preparation(self):
+        release = self.fixture.release()
+        self.fixture.env.update(INPUT_OPERATION="auto", INPUT_EXPECTED_RELEASE_COMMIT=release)
+        self.run_environment("discover")
+        self.fixture.env["INPUT_EXPECTED_RELEASE_COMMIT"] = "f" * 40
+        result, _ = self.run_environment("warm", ok=False)
+        self.assertIn("changed after inspection", result.stderr)
+        self.assertFalse(self.calls.exists())
 
     def test_cache_failure_leaves_consumer_unchanged(self):
         self.npm_output()

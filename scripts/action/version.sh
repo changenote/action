@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# shellcheck source=scripts/action/common.sh
-source "${BASH_SOURCE[0]%/*}/common.sh"
+# shellcheck source=scripts/action/inputs.sh
+source "${BASH_SOURCE[0]%/*}/inputs.sh"
+validate_pr_draft
 setup
 if [[ -n ${GITHUB_REF:-} ]]; then
   [[ $GITHUB_REF == "refs/heads/$base" ]] || fail 'Run PR management on its selected base branch.'
@@ -79,9 +80,19 @@ jq -n --arg title "${INPUT_PR_TITLE:-chore(release): version packages}" --rawfil
 if [[ -n $number ]]; then
   jq 'del(.head)' "$temp/request.json" > "$temp/update.json"
   gh api --method PATCH "repos/$GITHUB_REPOSITORY/pulls/$number" --input "$temp/update.json" >/dev/null
+  if [[ ${INPUT_PR_DRAFT:-} == always ]] && ! jq -e '.[0].draft == true' "$temp/open.json" >/dev/null; then
+    node_id=$(jq -er '.[0].node_id | select(type == "string" and length > 0)' "$temp/open.json")
+    jq -n --arg id "$node_id" '{
+      query: "mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { id isDraft } } }",
+      variables: {id: $id}
+    }' > "$temp/draft-request.json"
+    gh api --method POST graphql --input "$temp/draft-request.json" > "$temp/draft-response.json"
+    jq -e --arg id "$node_id" '.data.convertPullRequestToDraft.pullRequest | .id == $id and .isDraft == true' "$temp/draft-response.json" >/dev/null || fail 'Draft conversion did not return the managed draft PR.'
+  fi
   output pr-operation updated
 else
-  if ! gh api --method POST "repos/$GITHUB_REPOSITORY/pulls" --input "$temp/request.json" > "$temp/created.json"; then
+  jq --argjson draft "$([[ -n ${INPUT_PR_DRAFT:-} ]] && printf true || printf false)" '. + {draft: $draft}' "$temp/request.json" > "$temp/create-request.json"
+  if ! gh api --method POST "repos/$GITHUB_REPOSITORY/pulls" --input "$temp/create-request.json" > "$temp/created.json"; then
     # The API can succeed remotely but lose its response. Check before rollback.
     gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" > "$temp/rechecked.json"
     number=$(jq -r --arg branch "$branch" --arg base "$base" --arg repo "$GITHUB_REPOSITORY" --arg marker "$marker" \

@@ -45,6 +45,8 @@ The example uses [Prepare](../prepare/README.md) for that setup.
 ## Configuration
 
 - `base-branch` defaults to the repository default branch.
+- `pr-draft`: empty creates ready PRs; `create` drafts new PRs; `always` also converts managed ready PRs to draft on updates, including unchanged trees.
+  - Empty and `create` preserve draft status on updates. No pending notes closes the PR without conversion. Conversion errors fail the Action.
 - `github-token` defaults to the workflow token.
 - `commit-message` and `pr-title` both default to `chore(release): version packages`.
 - `version` defaults to CLI `latest`; exact stable versions require a `v` prefix.

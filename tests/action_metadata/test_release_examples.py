@@ -25,7 +25,7 @@ class ReleaseExamples(unittest.TestCase):
         self.assertEqual(steps[0]["with"]["persist-credentials"], "false")
         self.assertEqual(steps[1]["uses"], "changenote/action@<full-action-commit-sha>")
         self.assertEqual(steps[1]["if"], "github.event_name == 'push'")
-        self.assertEqual(steps[1]["with"], {"base-branch": "main", "operation": "auto"})
+        self.assertEqual(steps[1]["with"], {"base-branch": "main", "push-git-tags": "true", "create-github-releases": "true"})
         self.assertEqual(steps[-1]["uses"], "changenote/action/publish@<full-action-commit-sha>")
         self.assertEqual(steps[-1]["with"]["expected-release-commit"], "${{ steps.inspect.outputs.release-commit }}")
 

@@ -35,7 +35,8 @@ jobs:
         if: github.event_name == 'push'
         with:
           base-branch: main
-          operation: auto
+          push-git-tags: 'true'
+          create-github-releases: 'true'
       - uses: changenote/action/setup@<full-action-commit-sha>
         if: github.event_name == 'workflow_dispatch'
         id: cli
