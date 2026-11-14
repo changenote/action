@@ -8,6 +8,8 @@ For automatic setup, use root's [config-driven release operations](github-action
 For project-owned publication scripts, use the [root Action guide](github-actions.md#root-action-post-merge-commands).
 
 - [Requirements](#requirements)
+- [CLI setup](#cli-setup)
+- [Environment preparation](#environment-preparation)
 - [Release PR workflow](#release-pr-workflow)
 - [Publication inspection](#publication-inspection)
 - [Publication workflow](#publication-workflow)
@@ -33,6 +35,80 @@ Each Action sets up uv and installs a prebuilt changenote wheel from PyPI.
 - Select a CLI version compatible with the reviewed Action SHA.
   - The CLI version and Action commit SHA are different values.
   - Use the same exact `version` across PR generation, inspection, and publication to avoid changes between jobs.
+
+## CLI setup
+
+Use [Setup](../setup/README.md) to install the CLI without a consumer checkout or GitHub token.
+Installation uses a prebuilt PyPI wheel in an isolated temporary tool environment and adds the verified executable to `PATH`.
+Network access to uv distribution servers and PyPI is required; no compatible wheel means failure, not a Rust or source-build fallback.
+The Action does not cache the CLI executable between invocations.
+See [CLI installation](development.md#cli-installation) for isolation and compatibility details.
+
+| Input | Default | Behavior |
+| --- | --- | --- |
+| `version` | `latest` | Latest stable PyPI CLI, or an exact stable version with a required `v` prefix, such as `v0.13.0`. |
+| `uv-version` | Empty | Use setup-uv's default version. |
+
+Bare CLI versions, version ranges, Git revisions, URLs, and prereleases are rejected.
+The Action SHA pins Action code, not CLI `latest`.
+
+| Output | Meaning |
+| --- | --- |
+| `cli-path` | Absolute trusted executable path; valid only in this job. |
+| `version` | Exact installed CLI version with a `v` prefix. |
+
+Pass these outputs to later Actions' `cli-path` and `version` inputs to reuse the same installation.
+Never use a path from contributor data or transfer it between jobs.
+An exact `version` must match the executable; `latest` with a trusted path validates its stable version without resolving PyPI again.
+
+## Environment preparation
+
+Use [Prepare](../prepare/README.md) for project tools and offline dependency caches before standalone operations.
+It requires Linux, Bash, Git, `gh`, `jq`, and standard coreutils, but no consumer checkout.
+It reads the selected remote branch in temporary repositories without changing caller files, index, refs, or Git identity.
+Run it on `push` or `workflow_dispatch` for that base branch; forced or deleted pushes and contributor PR events are rejected.
+Every scope needs only `contents: read`.
+
+| `operation` | Environment selected |
+| --- | --- |
+| `manage-pr` (default) | Current pending release plan. |
+| `inspect` | Latest saved batch's parent configuration and consumed notes. |
+| `publish` | Same batch scope, guarded by the required `expected-release-commit`. |
+| `auto` | Saved-batch scope and the current pending PR plan. |
+
+These names select preparation only; the Action never manages PRs, creates tags, or publishes Releases.
+Use `inspect` preparation when discovering a batch, and guarded `publish` preparation after inspection or external CI selects its exact commit.
+
+| Input | Default | Behavior |
+| --- | --- | --- |
+| `cli-path` | Empty | Install `version`, or reuse a trusted same-job Setup output. |
+| `version` | `latest` | Stable PyPI CLI; exact versions require a `v` prefix. |
+| `operation` | `manage-pr` | One of the four scopes above. |
+| `github-token` | `github.token` | Repository token with contents read permission. |
+| `base-branch` | Empty | Use the repository default branch; the workflow must run on that branch. |
+| `expected-release-commit` | Empty | Required full lowercase 40-character batch SHA for `publish`; rejected for other scopes. |
+| `node-version` | `lts/*` | Node.js for configured npm lockfiles. |
+| `npm-version` | Empty | Use npm bundled with Node.js, or select an exact stable `x.y.z` version. |
+| `rust-toolchain` | `stable` | Rust toolchain for configured Cargo lockfiles, not CLI installation. |
+| `uv-version` | Empty | Use setup-uv's default for CLI installation and configured uv lockfiles. |
+
+Calling this Action enables preparation; there is no cache toggle or custom cache-key input.
+It finds supported existing lockfiles from configured primary and additional version files and fills the package managers' local dependency caches.
+Shared lockfiles are prepared once per revision; inactive plans and manifests without supported lockfiles need no cache preparation.
+It does not use `actions/cache` archives or promise cross-job cache reuse.
+For cache commands, supported files, private package credentials, and build restrictions, see [Tool setup](github-actions.md#tool-setup).
+Use the same CLI and project tool versions for preparation and later operations.
+
+| Output | Meaning |
+| --- | --- |
+| `cargo` | Whether the selected environment requires Cargo. |
+| `npm` | Whether the selected environment requires npm. |
+| `uv` | Whether the selected environment requires uv lockfile support. |
+| `pr-environment-ready` | Whether current PR preparation succeeded or was not requested. |
+
+In `auto`, a current-plan preparation failure returns `pr-environment-ready=false` without suppressing successful historical-batch preparation.
+CLI installation, required tool installation, and historical preparation failures still stop the Action.
+The other scopes do not suppress preparation failures.
 
 ## Release PR workflow
 
@@ -158,6 +234,10 @@ An unrelated later push does not retry an older batch, and manual dispatch only 
 To retry custom scripts, re-run the original eligible workflow. A newer batch blocks that retry; scripts must handle partial publication safely.
 
 ## Inputs and outputs
+
+The setup and preparation interfaces are listed under [CLI setup](#cli-setup) and [Environment preparation](#environment-preparation).
+The [check Action reference](checks.md#github-action-report) covers PR coverage, exemptions, and reports.
+For the root interface, see [Operations and inputs](github-actions.md#operations-and-inputs) and [Outputs](github-actions.md#outputs).
 
 | Action | Input | Default |
 | --- | --- | --- |

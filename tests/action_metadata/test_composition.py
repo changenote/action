@@ -82,6 +82,47 @@ class Composition(unittest.TestCase):
         for step in prepare["runs"]["steps"]:
             self.assertNotRegex(step.get("run", ""), r"(?:publish|version|lifecycle|release)\.sh")
 
+    def test_each_public_action_has_a_linked_readme(self):
+        overview = (ROOT / "README.md").read_text()
+        for path in PUBLIC:
+            with self.subTest(action=path):
+                readme = Path(path).with_name("README.md")
+                text = (ROOT / readme).read_text()
+                self.assertIn("[action.yml](action.yml)", text)
+                prefix = "../" if readme.parent != Path(".") else ""
+                self.assertIn(f"]({prefix}docs/", text)
+                self.assertIn(f"]({prefix}LICENSE)", text)
+                if prefix:
+                    self.assertIn(f"]({readme.as_posix()})", overview)
+
+    def test_readme_workflows_use_pinned_public_interfaces(self):
+        for path in PUBLIC:
+            readme = Path(path).with_name("README.md")
+            blocks = re.findall(r"```yaml\n(.*?)```", (ROOT / readme).read_text(), re.DOTALL)
+            self.assertTrue(blocks, readme)
+            for block in blocks:
+                workflow = yaml.load(block, Loader=yaml.BaseLoader)
+                jobs = workflow.get("jobs", {"example": workflow})
+                for job in jobs.values():
+                    for step in job.get("steps", []):
+                        if "uses" not in step:
+                            continue
+                        with self.subTest(readme=readme, uses=step["uses"]):
+                            self.assertRegex(step["uses"],
+                                             r"^[^@\s]+@([0-9a-f]{40}|<full-(action|checkout)-commit-sha>)$")
+                            name = step["uses"].split("@", 1)[0]
+                            if name != "changenote/action" and not name.startswith("changenote/action/"):
+                                continue
+                            directory = name.removeprefix("changenote/action").lstrip("/")
+                            action_path = str(Path(directory) / "action.yml")
+                            self.assertIn(action_path, PUBLIC)
+                            inputs = metadata(directory)["inputs"]
+                            supplied = step.get("with", {})
+                            self.assertLessEqual(set(supplied), set(inputs))
+                            for key, spec in inputs.items():
+                                if spec.get("required") == "true" and "default" not in spec:
+                                    self.assertIn(key, supplied)
+
     def test_workflow_expressions_do_not_enter_shell_source(self):
         for path in PUBLIC:
             action = yaml.load((ROOT / path).read_text(), Loader=yaml.BaseLoader)
