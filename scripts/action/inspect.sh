@@ -2,6 +2,7 @@
 set -euo pipefail
 # shellcheck source=scripts/action/publication.sh
 source "${BASH_SOURCE[0]%/*}/publication.sh"
+publication_targets "${1:-true}" "${2:-true}"
 : "${GITHUB_OUTPUT:?output file is required}"
 output ready false
 output release-commit ''

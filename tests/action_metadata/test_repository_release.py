@@ -48,7 +48,7 @@ class RepositoryRelease(unittest.TestCase):
             metadata = read_yaml(ROOT / name / "action.yml")
             self.assertTrue(set(step.get("with", {})).issubset(metadata["inputs"]))
             self.assertNotIn("run", step)
-        self.assertEqual(actions["./"]["with"], {"base-branch": "main", "operation": "auto"})
+        self.assertEqual(actions["./"]["with"], {"base-branch": "main", "push-git-tags": "true", "create-github-releases": "true"})
         self.assertEqual(actions["./"]["if"], "github.event_name == 'push'")
         for name in ("setup", "prepare", "manage-pr", "inspect", "publish"):
             self.assertIn("github.event_name == 'workflow_dispatch'", actions["./" + name]["if"])

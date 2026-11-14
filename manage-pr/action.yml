@@ -19,6 +19,9 @@ inputs:
   pr-title:
     description: Release PR title.
     default: 'chore(release): version packages'
+  pr-draft:
+    description: Empty creates ready PRs; create drafts new PRs; always also converts managed ready PRs to draft on updates.
+    default: ''
 outputs:
   has-notes:
     description: Whether there are pending notes.
@@ -36,6 +39,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
+        INPUT_PR_DRAFT: ${{ inputs.pr-draft }}
       run: bash "$ACTION_PATH/../scripts/action/inputs.sh" manage-pr
     - name: Set up uv
       if: inputs.cli-path == ''
@@ -58,4 +62,5 @@ runs:
         INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
         INPUT_COMMIT_MESSAGE: ${{ inputs.commit-message }}
         INPUT_PR_TITLE: ${{ inputs.pr-title }}
+        INPUT_PR_DRAFT: ${{ inputs.pr-draft }}
       run: bash "$ACTION_PATH/../scripts/action/version.sh"

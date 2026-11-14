@@ -19,16 +19,28 @@ validate_tools() {
   [[ ${INPUT_RUST_TOOLCHAIN:-stable} =~ ^[A-Za-z0-9._-]+$ ]] || fail 'Invalid rust-toolchain.'
 }
 
+validate_pr_draft() {
+  case ${INPUT_PR_DRAFT:-} in
+    ''|create|always) ;;
+    *) fail 'pr-draft must be empty, create, or always.' ;;
+  esac
+}
+
+# Root state is consumed by release.sh.
+# shellcheck disable=SC2034
 validate_root() {
   validate_event
   validate_tools
-  operation=${INPUT_OPERATION:-hooks}
-  case $operation in hooks|auto) ;; *) fail 'operation must be hooks or auto. Use the standalone Actions for individual operations.' ;; esac
+  validate_pr_draft
+  create_releases=${INPUT_CREATE_GITHUB_RELEASES-false}
+  push_tags=${INPUT_PUSH_GIT_TAGS-false}
+  [[ $create_releases == true || $create_releases == false ]] || fail 'create-github-releases must be true or false.'
+  [[ $push_tags == true || $push_tags == false ]] || fail 'push-git-tags must be true or false.'
+  [[ $create_releases == false || $push_tags == true ]] || fail 'create-github-releases requires push-git-tags.'
+  has_scripts=false
+  if [[ ${INPUT_PUBLISH_SCRIPT:-} =~ [^[:space:]] || ${INPUT_RELEASE_SCRIPT:-} =~ [^[:space:]] ]]; then has_scripts=true; fi
   [[ ${INPUT_PREPARE:-true} == false || ${INPUT_PREPARE:-true} == true ]] || fail 'prepare must be true or false.'
   [[ -z ${INPUT_RETRY:-} && -z ${INPUT_EXPECTED_RELEASE_COMMIT:-} ]] || fail 'retry and expected-release-commit are not root inputs. Use inspect and publish.'
-  if [[ $operation != hooks && ( ${INPUT_PUBLISH_SCRIPT:-} =~ [^[:space:]] || ${INPUT_RELEASE_SCRIPT:-} =~ [^[:space:]] ) ]]; then
-    fail 'Custom scripts require operation=hooks.'
-  fi
 }
 
 validate_preparation() {
@@ -49,7 +61,7 @@ validate_preparation() {
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
   case ${1:-} in
     prepare) validate_preparation; output operation "$operation" ;;
-    manage-pr) validate_event ;;
+    manage-pr) validate_event; validate_pr_draft ;;
     *) fail 'Unknown input validation entry point.' ;;
   esac
 fi

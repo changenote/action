@@ -31,13 +31,27 @@ def error(message):
 if state.get("api_fail"):
     error("API unavailable")
 if args[0] == "api":
-    endpoint = next(a for a in args[1:] if a.startswith("repos/"))
+    endpoint = next(a for a in args[1:] if a.startswith("repos/") or a == "graphql")
     method = args[args.index("--method") + 1] if "--method" in args else "GET"
     payload = (
         json.loads(Path(args[args.index("--input") + 1]).read_text())
         if "--input" in args
         else {}
     )
+    if endpoint == "graphql":
+        expected = "mutation($id: ID!) { convertPullRequestToDraft(input: {pullRequestId: $id}) { pullRequest { id isDraft } } }"
+        if method != "POST" or payload.get("query") != expected:
+            error("Unexpected GraphQL mutation")
+        if state.get("draft_fail"):
+            error("Draft conversion denied")
+        pr = next((pr for pr in state["pulls"]
+                   if pr.get("node_id") == payload["variables"]["id"]), None)
+        if pr is None or pr["state"] != "open":
+            error("Unknown managed PR node")
+        pr["draft"] = True
+        emit({"data": {"convertPullRequestToDraft": {"pullRequest": {
+            "id": pr["node_id"], "isDraft": True,
+        }}}})
     if endpoint == "repos/test/repo":
         repo = {
             "clone_url": state["remote"],
@@ -68,6 +82,8 @@ if args[0] == "api":
             error("PR permission denied")
         pr = {
             "number": len(state["pulls"]) + 1,
+            "node_id": "PR_" + str(len(state["pulls"]) + 1),
+            "draft": payload["draft"],
             "state": "open",
             "body": payload["body"],
             "title": payload["title"],
@@ -79,6 +95,8 @@ if args[0] == "api":
             error("Lost PR creation response")
         emit(pr)
     if "/pulls/" in endpoint and method == "PATCH":
+        if "draft" in payload:
+            error("REST PATCH cannot set draft status")
         number = int(endpoint.rsplit("/", 1)[1])
         pr = next(pr for pr in state["pulls"] if pr["number"] == number)
         pr.update({k: v for k, v in payload.items() if k in ("state", "title", "body")})

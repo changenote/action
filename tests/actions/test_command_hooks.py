@@ -54,7 +54,7 @@ class CommandHooks(unittest.TestCase):
         self.f.env.update(
             GITHUB_EVENT_PATH=str(self.event), GITHUB_EVENT_NAME=event,
             GITHUB_REF="refs/heads/" + (self.f.env.get("INPUT_BASE_BRANCH") or self.f.state().get("default_branch", "main")), GITHUB_SHA=sha,
-            INPUT_OPERATION="hooks", INPUT_PUBLISH_SCRIPT=publish, INPUT_RELEASE_SCRIPT=release,
+            INPUT_PUBLISH_SCRIPT=publish, INPUT_RELEASE_SCRIPT=release,
         )
         result, out = self.f.action("release", ok=ok)
         self.assertEqual(list(Path(self.f.env["TMPDIR"]).iterdir()), [])
@@ -88,10 +88,11 @@ class CommandHooks(unittest.TestCase):
                 self.calls.unlink(missing_ok=True)
                 _, out = self.run_hooks(publish, release)
                 self.assertEqual(self.lines(), expected)
-                self.assertEqual(out["release-commit"], sha)
+                self.assertEqual(out["release-commit"], sha if expected else "")
                 self.assertEqual(json.loads(out["releases"]), [
                     {"package": "pkg", "version": "1.0.1", "tag": "v1.0.1"},
-                ])
+                ] if expected else [])
+                self.assertEqual(out["ready"], "true" if expected else "false")
                 self.assertEqual(self.f.git("ls-remote", "--tags", "origin"), "")
                 self.assertEqual(self.f.state()["releases"], [])
 
@@ -273,7 +274,7 @@ class CommandHooks(unittest.TestCase):
         sha = self.f.git("rev-parse", "HEAD")
         self.associate(sha)
         _, out = self.run_hooks()
-        self.assertEqual(out["release-commit"], sha)
+        self.assertEqual(out["release-commit"], "")
         result, _ = self.run_hooks('echo unexpected >> "$CALLS"', ok=False)
         self.assertIn("historical note-bearing", result.stderr)
         self.assertEqual(self.lines(), [])

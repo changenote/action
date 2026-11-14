@@ -5,6 +5,42 @@ The Rust CLI and its crates.io and PyPI publication belong to `changenote/change
 The repositories have independent versions and commit SHAs.
 The Action `version` input selects a published CLI, not the Action release.
 
+## Root release controls
+
+This is a breaking Action API change under the pre-1.0 minor-release policy.
+The CLI selected by `version` remains independent of the Action release in `VERSION`.
+Root no longer supports `operation`, `hooks`, or `auto`. There is no alias or replacement mode selector.
+GitHub may only warn about undeclared `with` inputs; do not expect a hard failure for `operation`.
+
+1. Previous `operation: hooks` callers: remove `operation` and retain the scripts.
+   - Built-in tags and Releases remain disabled unless explicitly enabled.
+   - Set `prepare: 'false'` to retain caller-owned preparation. The old mode skipped preparation regardless of the input default.
+2. Previous `operation: auto` callers: remove `operation` and set both `push-git-tags: 'true'` and `create-github-releases: 'true'`.
+   - Without scripts, this retains publication of the latest saved batch on later pushes.
+3. No-input callers: PR-only writes remain the default.
+   - `prepare: 'true'` now applies consistently. PR-only calls return an empty `release-commit`, `releases: '[]'`, and `ready: 'false'`.
+   - Selected batches retain identity even when requested GitHub work is already complete.
+
+Either script requires a qualifying new managed merge in the triggering push range.
+It disables script-free catch-up of older batches; unrelated pushes only manage the PR.
+Steps run in order: `publish-script`, selected built-in tags and Releases, `release-script`.
+A final script does not select publication targets. Keep both controls false when it owns tags or Releases.
+Releases require explicit tags, including when tags already exist.
+Publication controls accept only literal `true` or `false`.
+
+`published` and `published-packages` describe built-in remote tag/Release changes only.
+Script-only success returns verified identity but reports no built-in publication.
+`publication-needed` is not registry state or a script-execution gate.
+See [examples and draft PR behavior](github-actions.md#small-root-examples).
+
+Manual root invocations remain PR-only. Workflow menu choices, `/prepare` environment scopes, `pr-operation` outputs, and all seven entry points are unchanged.
+Standalone `/publish` still performs full publication, not a selective retry.
+For script-only or tags-only recovery, re-run the original eligible root invocation with the same inputs.
+Scripts repeat on retries, including completed GitHub work; make them safe for partial and completed uploads.
+A newer batch must fail the retry, not switch versions.
+
+Repository-owned root calls migrate in this change. External consumer pins and inputs require separate authorization and must change together.
+
 ## Composable Action interfaces
 
 This revision has exactly seven public entry points: root, `setup`, `prepare`, `check`, `manage-pr`, `inspect`, and `publish`.
@@ -12,7 +48,7 @@ There are no compatibility aliases.
 
 | Previous interface | Replacement |
 | --- | --- |
-| `changenote/action/release` | Root with explicit `operation: auto` for a complete built-in workflow |
+| `changenote/action/release` | Root with explicit `push-git-tags: 'true'` and `create-github-releases: 'true'` |
 | `changenote/action/select` or `changenote/action/preview` | `changenote/action/inspect` |
 | Root `operation: manage-pr` | `changenote/action/manage-pr` |
 | Root `operation: select` | `changenote/action/inspect` |
@@ -23,14 +59,14 @@ There are no compatibility aliases.
 | Preparation scope `select` | Preparation scope `inspect` |
 | Preparation scope `retry-publication` | Use `inspect`, then inspect and publish explicitly |
 
-Root still defaults to `hooks`. Replacing the old built-in workflow with root without setting `auto` does not enable built-in publication.
-Both root modes only manage the PR on manual events.
+Root defaults to PR-only work. Replacing the old built-in workflow without both publication controls does not enable built-in publication.
+Root only manages the PR on manual events.
 Do not pass a manual workflow menu choice directly into root.
 Use standalone Actions for manual PR work and publication retries, as the [release template](../examples/github-actions/release.yml) does.
 
 Standalone Actions do not implicitly prepare project package-manager tools and caches.
 When replacing a root operation, use `/prepare` first or retain caller-owned preparation.
-Keep the same tool versions for preparation and the standalone operation. For Rust, set `RUSTUP_TOOLCHAIN` in the caller when it must override a checked-in toolchain file; root `auto` still selects `rust-toolchain` itself.
+Keep the same tool versions for preparation and the standalone operation. For Rust, set `RUSTUP_TOOLCHAIN` in the caller when it must override a checked-in toolchain file; root selects `rust-toolchain` itself.
 The `/prepare` input `operation` is an environment scope: `manage-pr`, `inspect`, `publish`, or `auto`.
 The `publish` scope requires the exact `expected-release-commit`; the other scopes reject this guard.
 `/prepare` does not run that release operation.
@@ -84,7 +120,9 @@ Current local verification evidence belongs in the implementation PR; historical
 ## Rollback and recovery
 
 Disable affected workflows and cancel active runs separately before unsafe automation continues.
-Restore the previous reviewed full Action SHA and its matching workflow, including historical paths and inputs.
+Before rollout, record the previous reviewed full Action SHA, root mode, preparation setup, and inputs.
+Restore that SHA and its matching workflow, including historical paths and `operation`; remove inputs the old Action does not support.
+If the old interface cannot represent registry-script plus built-in publication, disable automation and recover explicitly. Never omit a publication step silently.
 Code rollback does not undo remote tags, GitHub Releases, or registry uploads.
 
 Inspect remote publication state before retrying a partial failure.

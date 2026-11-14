@@ -2,7 +2,14 @@
 set -euo pipefail
 # shellcheck source=scripts/action/publication.sh
 source "${BASH_SOURCE[0]%/*}/publication.sh"
-setup
+publication_targets "${2:-true}" "${3:-true}"
+if [[ $# -gt 1 ]]; then
+  setup_readonly
+  git -C "$root" config user.name 'github-actions[bot]'
+  git -C "$root" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+else
+  setup
+fi
 output published false
 output published-packages '[]'
 output release-commit ''
@@ -31,13 +38,22 @@ if [[ $legacy_batch == true ]]; then
   exit 0
 fi
 require_unchanged_publication_batch
+[[ $push_tags == true ]] || exit 0
 "$cli" tag
 changed='[]'
+record_publication() {
+  [[ $did_publish == true && $recorded == false ]] || return 0
+  changed=$(jq -c --argjson item "$item" '. + [{name: $item.package, version: $item.version}]' <<< "$changed")
+  output published true
+  output published-packages "$changed"
+  recorded=true
+}
 index=0
 while IFS= read -r item; do
   index=$((index + 1))
   tag=$(jq -r '.tag' <<< "$item")
   did_publish=false
+  recorded=false
   remote_tag "$tag"
   [[ -z $tag_sha || $tag_sha == "$release" ]] || fail "Remote tag changed during publication: $tag"
   if [[ -z $tag_sha ]]; then
@@ -51,7 +67,8 @@ while IFS= read -r item; do
   # Always recheck the remote identity, including after successful pushes.
   remote_tag "$tag"
   [[ $tag_sha == "$release" ]] || fail "Remote tag identity changed: $tag"
-  if ! jq -e --arg tag "$tag" 'any(.[][]; .tag_name == $tag)' "$temp/releases.json" >/dev/null; then
+  record_publication
+  if [[ $create_releases == true ]] && ! jq -e --arg tag "$tag" 'any(.[][]; .tag_name == $tag)' "$temp/releases.json" >/dev/null; then
     if gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --title "$tag" --notes-file "$temp/notes/$index.md"; then
       did_publish=true
     else
@@ -64,9 +81,5 @@ while IFS= read -r item; do
   fi
   remote_tag "$tag"
   [[ $tag_sha == "$release" ]] || fail "Remote tag changed while creating the release: $tag"
-  if [[ $did_publish == true ]]; then
-    changed=$(jq -c --argjson item "$item" '. + [{name: $item.package, version: $item.version}]' <<< "$changed")
-    output published true
-    output published-packages "$changed"
-  fi
+  record_publication
 done < <(jq -c '.[]' "$temp/batch.json")

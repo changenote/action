@@ -18,7 +18,8 @@ class RootMetadata(unittest.TestCase):
 
     def test_defaults_and_output_forwarding(self):
         defaults = {
-            "cli-path": "", "prepare": "true", "version": "latest", "operation": "hooks",
+            "cli-path": "", "prepare": "true", "version": "latest", "create-github-releases": "false",
+            "push-git-tags": "false", "pr-draft": "",
             "github-token": "${{ github.token }}", "base-branch": "",
             "node-version": "lts/*", "npm-version": "", "rust-toolchain": "stable",
             "uv-version": "", "commit-message": "chore(release): version packages",
@@ -32,12 +33,12 @@ class RootMetadata(unittest.TestCase):
         labels = [step.get("name", step.get("uses")) for step in self.steps]
         self.assertEqual(labels, [
             "Validate release inputs", "Set up uv", "Install changenote CLI",
-            "Discover release environments", "Set up Rust",
+            "Select release work", "Discover release environments", "Set up Rust",
             "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
             "Install selected npm version", "Populate offline package caches", "Run release operation",
         ])
         uv = self.step("Set up uv")
-        self.assertEqual(uv["if"], "inputs.operation == 'hooks' || inputs.cli-path == '' || inputs.prepare == 'true'")
+        self.assertEqual(uv["if"], "steps.inputs.outputs.has-scripts == 'true' || inputs.cli-path == '' || inputs.prepare == 'true'")
         self.assertEqual(uv["with"], {"version": "${{ inputs.uv-version }}", "enable-cache": "false"})
         install = self.step("Install changenote CLI")
         self.assertNotIn("if", install)
@@ -46,11 +47,12 @@ class RootMetadata(unittest.TestCase):
     def test_environment_scope_is_separate_from_root_mode(self):
         for name in ("Discover release environments", "Populate offline package caches"):
             step = self.step(name)
-            self.assertEqual(step["if"], "inputs.operation != 'hooks' && inputs.prepare == 'true'")
-            self.assertEqual(step["env"]["INPUT_OPERATION"], "${{ steps.inputs.outputs.environment-operation }}")
+            self.assertEqual(step["if"], "inputs.prepare == 'true'")
+            self.assertEqual(step["env"]["INPUT_OPERATION"], "${{ steps.selection.outputs.environment-operation }}")
             self.assertNotIn("INPUT_EXPECTED_RELEASE_COMMIT", step["env"])
         run = self.step("Run release operation")
-        self.assertEqual(run["env"]["INPUT_OPERATION"], "${{ steps.inputs.outputs.operation }}")
+        self.assertNotIn("INPUT_OPERATION", run["env"])
+        self.assertEqual(run["env"]["INPUT_PUSH_GIT_TAGS"], "${{ inputs.push-git-tags }}")
         self.assertNotIn("INPUT_RETRY", run["env"])
         self.assertNotIn("INPUT_EXPECTED_RELEASE_COMMIT", run["env"])
         self.assertEqual(run["env"]["INPUT_PR_ENVIRONMENT_READY"],
@@ -69,7 +71,7 @@ class RootMetadata(unittest.TestCase):
         self.assertEqual(npm["run"], 'npm install --global --ignore-scripts --no-audit --no-fund "npm@$INPUT_NPM_VERSION"')
         validate = self.step("Validate release inputs")
         self.assertNotIn("GH_TOKEN", validate["env"])
-        for key in ("operation", "prepare", "npm-version", "rust-toolchain", "publish-script", "release-script"):
+        for key in ("create-github-releases", "push-git-tags", "pr-draft", "prepare", "npm-version", "rust-toolchain", "publish-script", "release-script"):
             self.assertEqual(validate["env"]["INPUT_" + key.upper().replace("-", "_")], "${{ inputs." + key + " }}")
         for name in ("Discover release environments", "Populate offline package caches"):
             env = self.step(name)["env"]

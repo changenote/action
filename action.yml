@@ -7,9 +7,6 @@ inputs:
   version:
     description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
     default: latest
-  operation:
-    description: hooks manages PRs and runs trusted scripts after a managed merge; auto manages PRs and publishes pending batches on pushes. Manual runs only manage PRs.
-    default: hooks
   github-token:
     description: Token with contents and pull requests write permissions.
     default: ${{ github.token }}
@@ -37,15 +34,24 @@ inputs:
   pr-title:
     description: Release PR title.
     default: 'chore(release): version packages'
+  pr-draft:
+    description: Empty creates ready PRs; create drafts new PRs; always also converts managed ready PRs to draft on updates.
+    default: ''
+  create-github-releases:
+    description: Create GitHub Releases for the verified batch. Requires push-git-tags.
+    default: 'false'
+  push-git-tags:
+    description: Generate and push tags for the verified batch.
+    default: 'false'
   publish-script:
-    description: Optional trusted Bash script for operation=hooks. Runs before release-script at the verified managed merge.
+    description: Optional trusted Bash build and registry publication script at a verified managed merge, before built-in publication.
     default: ''
   release-script:
-    description: Optional trusted Bash script for operation=hooks. Runs after successful publish-script, or directly when absent.
+    description: Optional trusted final Bash script after successful publish-script and selected built-in publication.
     default: ''
 outputs:
   release-commit:
-    description: Verified managed merge in hooks, or pending publication batch in auto.
+    description: Verified selected release commit, including completed batches; empty on PR-only calls.
     value: ${{ steps.version.outputs.release-commit }}
   releases:
     description: JSON array of package, version, and tag for the selected batch.
@@ -57,7 +63,7 @@ outputs:
     description: JSON array of name and version changed by publication in this run.
     value: ${{ steps.version.outputs.published-packages }}
   publication-plan:
-    description: Inspected GitHub publication plan for auto on push.
+    description: Requested GitHub publication plan; empty when no built-in targets are selected.
     value: ${{ steps.version.outputs.publication-plan }}
   publication-needed:
     description: Whether inspection found incomplete GitHub publication work.
@@ -82,7 +88,9 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        INPUT_OPERATION: ${{ inputs.operation }}
+        INPUT_CREATE_GITHUB_RELEASES: ${{ inputs.create-github-releases }}
+        INPUT_PUSH_GIT_TAGS: ${{ inputs.push-git-tags }}
+        INPUT_PR_DRAFT: ${{ inputs.pr-draft }}
         INPUT_PREPARE: ${{ inputs.prepare }}
         INPUT_PUBLISH_SCRIPT: ${{ inputs.publish-script }}
         INPUT_RELEASE_SCRIPT: ${{ inputs.release-script }}
@@ -90,7 +98,7 @@ runs:
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/scripts/action/release.sh" validate
     - name: Set up uv
-      if: inputs.operation == 'hooks' || inputs.cli-path == '' || inputs.prepare == 'true'
+      if: steps.inputs.outputs.has-scripts == 'true' || inputs.cli-path == '' || inputs.prepare == 'true'
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       with:
         enable-cache: false
@@ -102,14 +110,29 @@ runs:
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_CLI_PATH: ${{ inputs.cli-path }}
       run: bash "$ACTION_PATH/scripts/action/install-cli.sh"
+    - name: Select release work
+      id: selection
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_CREATE_GITHUB_RELEASES: ${{ inputs.create-github-releases }}
+        INPUT_PUSH_GIT_TAGS: ${{ inputs.push-git-tags }}
+        INPUT_PUBLISH_SCRIPT: ${{ inputs.publish-script }}
+        INPUT_RELEASE_SCRIPT: ${{ inputs.release-script }}
+        INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
+        INPUT_PR_DRAFT: ${{ inputs.pr-draft }}
+        INPUT_NPM_VERSION: ${{ inputs.npm-version }}
+        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      run: bash "$ACTION_PATH/scripts/action/release.sh" select
     - name: Discover release environments
-      if: inputs.operation != 'hooks' && inputs.prepare == 'true'
+      if: inputs.prepare == 'true'
       id: environment
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
         GH_TOKEN: ${{ inputs.github-token }}
-        INPUT_OPERATION: ${{ steps.inputs.outputs.environment-operation }}
+        INPUT_OPERATION: ${{ steps.selection.outputs.environment-operation }}
         INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/scripts/action/release-environment.sh" discover
@@ -131,13 +154,13 @@ runs:
       # zizmor: ignore[adhoc-packages] -- Exact npm-version is validated; lifecycle scripts are disabled.
       run: npm install --global --ignore-scripts --no-audit --no-fund "npm@$INPUT_NPM_VERSION"
     - name: Populate offline package caches
-      if: inputs.operation != 'hooks' && inputs.prepare == 'true'
+      if: inputs.prepare == 'true'
       id: warm
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
         GH_TOKEN: ${{ inputs.github-token }}
-        INPUT_OPERATION: ${{ steps.inputs.outputs.environment-operation }}
+        INPUT_OPERATION: ${{ steps.selection.outputs.environment-operation }}
         INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/scripts/action/release-environment.sh" warm
@@ -150,7 +173,9 @@ runs:
         INPUT_PUBLISH_SCRIPT: ${{ inputs.publish-script }}
         INPUT_RELEASE_SCRIPT: ${{ inputs.release-script }}
         INPUT_PREPARE: ${{ inputs.prepare }}
-        INPUT_OPERATION: ${{ steps.inputs.outputs.operation }}
+        INPUT_CREATE_GITHUB_RELEASES: ${{ inputs.create-github-releases }}
+        INPUT_PUSH_GIT_TAGS: ${{ inputs.push-git-tags }}
+        INPUT_PR_DRAFT: ${{ inputs.pr-draft }}
         INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
         INPUT_NPM_VERSION: ${{ inputs.npm-version }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}

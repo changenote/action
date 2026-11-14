@@ -31,11 +31,12 @@ class RootAction(unittest.TestCase):
                           TMPDIR=str(self.f.top / "root-temp"))
         Path(self.f.env["TMPDIR"]).mkdir()
 
-    def run_root(self, operation="auto", event="push", ok=True):
+    def run_root(self, publication=True, event="push", ok=True):
         self.f.env.update(GITHUB_EVENT_NAME=event)
-        self.f.env.pop("INPUT_OPERATION", None)
-        if operation is not None:
-            self.f.env["INPUT_OPERATION"] = operation
+        for key in ("INPUT_PUSH_GIT_TAGS", "INPUT_CREATE_GITHUB_RELEASES"):
+            self.f.env.pop(key, None)
+            if publication:
+                self.f.env[key] = "true"
         result, outputs = self.f.action("release", ok=ok)
         self.assertNotIn("test-token", result.stdout + result.stderr + json.dumps(outputs))
         self.assertEqual(list(Path(self.f.env["TMPDIR"]).iterdir()), [])
@@ -44,10 +45,10 @@ class RootAction(unittest.TestCase):
         return result, outputs
 
     def test_no_batch_and_manual_runs_do_not_publish(self):
-        for operation, event in (("auto", "push"), ("auto", "workflow_dispatch"),
-                                 (None, "workflow_dispatch")):
-            with self.subTest(operation=operation, event=event):
-                _, out = self.run_root(operation, event)
+        for publication, event in ((True, "push"), (True, "workflow_dispatch"),
+                                   (False, "workflow_dispatch")):
+            with self.subTest(publication=publication, event=event):
+                _, out = self.run_root(publication, event)
                 self.assertEqual(out["release-commit"], "")
                 self.assertEqual(out["releases"], "[]")
                 self.assertEqual(out["publication-needed"], "false")
@@ -69,11 +70,11 @@ class RootAction(unittest.TestCase):
         self.assertEqual(out["ready"], "true")
         self.assertFalse((self.f.repo / "injected").exists())
 
-    def test_manual_auto_and_default_hooks_only_manage_pr(self):
+    def test_manual_calls_only_manage_pr(self):
         self.f.release()
         self.f.note("Next release", "next")
-        for mode in ("auto", None):
-            _, out = self.run_root(mode, "workflow_dispatch")
+        for publication in (True, False):
+            _, out = self.run_root(publication, "workflow_dispatch")
             self.assertIn(out["pr-operation"], ("created", "updated"))
             self.assertEqual(out["release-commit"], "")
             self.assertEqual(out["publication-plan"], "[]")
@@ -100,15 +101,15 @@ class RootAction(unittest.TestCase):
         self.assertEqual(out["ready"], "true")
         self.assertEqual((self.f.repo / ".changenote/next.md").read_bytes(), pending)
 
-    def test_completed_inspection_does_not_enable_auto_republication(self):
+    def test_completed_inspection_retains_identity_without_republication(self):
         sha = self.f.release()
         self.f.action("publish")
         _, inspected = self.f.action("inspect")
         self.assertEqual(inspected["release-commit"], sha)
         self.assertEqual(inspected["publication-needed"], "false")
         _, out = self.run_root()
-        self.assertEqual(out["release-commit"], "")
-        self.assertEqual(out["releases"], "[]")
+        self.assertEqual(out["release-commit"], sha)
+        self.assertEqual(json.loads(out["releases"]), RELEASES)
         self.assertEqual(out["published"], "false")
         self.assertEqual(out["ready"], "true")
 
@@ -171,7 +172,7 @@ class RootAction(unittest.TestCase):
         self.assertEqual(f.state()["releases"], [])
         self.assertEqual(f.git("ls-remote", "--tags", "origin"), "")
 
-    def test_each_mode_runs_pr_generation_once(self):
+    def test_each_target_scope_runs_pr_generation_once(self):
         log = self.f.top / "cli-calls"
         binary = self.f.bin / "changenote"
         binary.unlink()
@@ -179,9 +180,9 @@ class RootAction(unittest.TestCase):
         binary.chmod(0o755)
         self.f.env.update(CLI_CALLS=str(log), REAL_CLI=str(test_actions.CLI))
         self.f.note()
-        for mode in ("auto", "hooks"):
+        for publication in (True, False):
             log.write_text("")
-            self.run_root(mode, "workflow_dispatch")
+            self.run_root(publication, "workflow_dispatch")
             self.assertEqual(log.read_text().splitlines().count("status --include-note-sections"), 1)
 
     def test_selected_rust_toolchain_is_used_by_auto_workers(self):
@@ -199,10 +200,9 @@ class RootAction(unittest.TestCase):
     def test_invalid_inputs_and_removed_modes_fail_before_api_calls(self):
         baseline = self.f.env.copy()
         cases = [
-            {"INPUT_OPERATION": mode}
-            for mode in ("unknown", "manage-pr", "select", "inspect", "publish", "retry-publication")
-        ] + [
-            {"INPUT_OPERATION": "auto", "INPUT_PUBLISH_SCRIPT": "echo must-not-run"},
+            {"INPUT_CREATE_GITHUB_RELEASES": "true", "INPUT_PUSH_GIT_TAGS": "false"},
+            {"INPUT_PUSH_GIT_TAGS": "TRUE"}, {"INPUT_PUSH_GIT_TAGS": ""},
+            {"INPUT_CREATE_GITHUB_RELEASES": "yes"}, {"INPUT_PR_DRAFT": "false"},
             {"INPUT_PREPARE": "yes"}, {"GITHUB_EVENT_NAME": "pull_request"},
             {"GITHUB_EVENT_NAME": "pull_request_target"}, {"INPUT_RETRY": "true"},
             {"INPUT_EXPECTED_RELEASE_COMMIT": "a" * 40},
@@ -223,14 +223,14 @@ class RootAction(unittest.TestCase):
             self.assertEqual(out, {})
         self.assertEqual(self.f.state().get("calls", []), [])
 
-    def test_root_validation_keeps_mode_and_environment_scope_separate(self):
-        self.f.env.update(GITHUB_EVENT_NAME="workflow_dispatch", INPUT_OPERATION="auto")
+    def test_root_validation_has_no_public_mode_output(self):
+        self.f.env.update(GITHUB_EVENT_NAME="workflow_dispatch")
         output = self.f.top / "validation-output"
         output.write_text("")
         self.f.env["GITHUB_OUTPUT"] = str(output)
         self.f.run_cmd(["bash", str(test_actions.SOURCE / "scripts/action/release.sh"), "validate"])
         self.assertEqual(dict(line.split("=", 1) for line in output.read_text().splitlines()),
-                         {"operation": "auto", "environment-operation": "manage-pr"})
+                         {"has-scripts": "false"})
         self.assertEqual(self.f.state().get("calls", []), [])
 
 

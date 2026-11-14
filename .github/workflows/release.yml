@@ -36,7 +36,8 @@ jobs:
         if: github.event_name == 'push'
         with:
           base-branch: main
-          operation: auto
+          push-git-tags: 'true'
+          create-github-releases: 'true'
       - uses: ./setup # zizmor: ignore[self-repository] -- Event-SHA checkout.
         if: github.event_name == 'workflow_dispatch'
         id: cli

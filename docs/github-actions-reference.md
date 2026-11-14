@@ -3,7 +3,8 @@
 Use these Actions when the workflow manages separate release operations and project package-manager setup.
 Each operation installs the CLI selected by `version`, or reuses a trusted same-job `cli-path` returned by `/setup`.
 Use `/prepare` for project tools and offline caches; `/manage-pr`, `/inspect`, and `/publish` perform separate operations.
-The root exposes complete `hooks` and `auto` workflows. Use standalone Actions for individual operations.
+Root manages PRs by default and enables scripts, tags, and Releases through explicit inputs. It has no `operation` input.
+Use standalone Actions for individual operations; `/prepare` scopes are unchanged.
 For automatic setup, use root's [config-driven release operations](github-actions.md#config-driven-github-publication).
 For project-owned publication scripts, use the [root Action guide](github-actions.md#root-action-post-merge-commands).
 
@@ -163,6 +164,18 @@ jobs:
 
 The Action fetches the current base branch, applies pending notes in a temporary worktree, and creates or updates one PR from `narumi/chore/changenote-release-<base-branch>`. Reserve that branch for automation. New notes update the same PR. A rerun creates no commit or push when the release branch includes the current base commit and its generated tree is unchanged. If notes are removed, the Action closes only its managed PR and leaves the branch in place. A manually closed PR is replaced when notes remain.
 
+`pr-draft` is available on root and `/manage-pr`:
+
+| Value | Creation | Updates |
+| --- | --- | --- |
+| Empty (default) | Ready PR | Preserve draft status. |
+| `create` | Draft PR | Preserve draft status. |
+| `always` | Draft PR | Convert managed ready PRs to draft, including unchanged generated trees. |
+
+Creation uses REST `draft`. Conversion uses GraphQL `convertPullRequestToDraft` and the managed PR's `node_id`, not REST PATCH.
+Invalid values fail before API calls. A conversion failure fails the Action even if PR text or branch updates already succeeded.
+No pending notes closes the PR without conversion. Ownership and lease checks remain required.
+
 Release PR descriptions use a `Releases` heading and `package@version` headings. By default, notes are grouped by their own bump under `Major Changes`, `Minor Changes`, and `Patch Changes`; empty groups are omitted. Multiline notes remain within their list items. The Action requires a CLI that supports `status --include-note-sections`. This option adds ordered `note_sections` objects with `title` and `notes`; default release-plan output and saved batches are unchanged. Custom section configuration replaces the bump groups for both Release PRs and changelogs.
 
 Existing branches require a marked PR in their history. Lease-based pushes stop if another actor moves the branch. The Action stages only release outputs and consumed notes. Notes and titles are data, not shell commands. PR bodies over 60,000 bytes omit release details.
@@ -206,7 +219,7 @@ Publication can recover an earlier batch even if PR management fails.
 Its job needs only `contents: write`.
 
 In this example, manual dispatch runs both PR management and built-in GitHub publication again.
-This differs from the root script workflow, where manual dispatch only manages the PR.
+This differs from root, where manual dispatch only manages the PR regardless of scripts or publication controls.
 The [CLI repository's release workflow](https://github.com/changenote/changenote/blob/main/docs/development.md#repository-release-workflow) uses its own routing policy.
 
 ### Release-tree verification
@@ -228,7 +241,10 @@ Upgrade the CLI and all Action pins together. New releases and local tag creatio
 Existing remote tags must point to the selected commit. Missing tags and GitHub Releases are created; existing release text is not replaced. Draft releases, missing tags for existing releases, malformed batches, batch deletion, manually edited release trees, and tag conflicts stop publication. A batch in a root commit cannot be verified.
 If no batch exists, publication makes no changes.
 
-Root `auto` on push and standalone `/publish` can recover publication of the latest validated batch after later pushes. They do not implement registry uploads.
+Root with explicit publication controls and no scripts, and standalone `/publish`, can complete the latest validated batch after later pushes.
+Standalone `/inspect` and `/publish` always inspect tags and Releases. Their inputs and full-publication defaults are unchanged; `/publish` is not a selective retry.
+Only root supports tags-only work or no built-in targets. See the [target matrix](github-actions.md#operations-and-inputs).
+Root scripts can upload registry artifacts; the built-in publisher does not.
 The root Action runs custom scripts only for a managed batch merged in the triggering push range.
 An unrelated later push does not retry an older batch, and manual dispatch only manages the PR.
 To retry custom scripts, re-run the original eligible workflow. A newer batch blocks that retry; scripts must handle partial publication safely.
@@ -247,15 +263,18 @@ For the root interface, see [Operations and inputs](github-actions.md#operations
 | Release PR | `commit-message` | `chore(release): version packages` |
 | Release PR | `pr-title` | `chore(release): version packages` |
 | Root | `publish-script`, `release-script` | Empty; no custom publication |
-| Root | `operation` | `hooks`; explicitly choose `auto` for built-in publication |
-| Root | `prepare` | `true` for built-in operations; `false` uses caller-owned preparation |
+| Root | `push-git-tags`, `create-github-releases` | Both `false`; Releases require explicit tags |
+| Root, Release PR | `pr-draft` | Empty; also accepts `create` or `always` |
+| Root | `prepare` | `true` for pending PR work and selected-batch replay tools; `false` uses caller-owned preparation |
 | Operation Actions | `cli-path` | Empty; or a trusted same-job `/setup` output |
 | Publication | `expected-release-commit` | Empty; retain latest-batch selection |
 
 Root outputs are described in the [main guide](github-actions.md#outputs).
-In root's default `hooks` operation, `published` and `ready` remain false because script success does not inspect GitHub publication state.
+PR-only calls return no release identity and `ready=false`. Script-only success returns verified identity, `published=false`, `published-packages=[]`, and no requested GitHub work.
+`ready` stays false until all requested release steps complete. It does not prove registry publication.
 The root Action outputs `has-notes` (`true` or `false`), `pr-number` (number or empty string), and `pr-operation` (`created`, `updated`, `closed`, or `none`). `updated` includes a no-op version rerun that refreshes the PR metadata.
-In `hooks`, it also returns `release-commit` and `releases` for a verified managed merge, independently of configured commands or GitHub publication state. No selected merge returns an empty commit and `[]`. Read these outputs only after success.
+A selected and verified batch retains `release-commit` and `releases` even when GitHub work is complete.
+`publication-needed` describes requested GitHub work only; it never determines whether a script runs. Read outputs only after success.
 
 The publication Action accepts an optional `expected-release-commit`, a full lowercase 40-character commit SHA.
 A mismatch with the verified latest batch fails before remote tag or Release writes.
