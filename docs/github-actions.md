@@ -211,6 +211,22 @@ Before use:
 Repository settings and token permissions cannot be supplied by package configuration.
 Do not merge another Release PR until the current batch and downstream artifacts are complete.
 
+## Change source links
+
+Release PR details use the CLI's rendered note sections.
+To include commit links, use the published CLI with `version: 'v0.13.0'` and set `changelog.source_repository` in `.changenote/config.json` to a canonical `https://github.com/<owner>/<repo>` URL.
+No new Action input or GitHub permission is needed.
+The CLI reads local first-parent note history, follows actual renames, and includes creation and later edits in a stable order.
+A `Sources:` paragraph precedes each note summary; verified Markdown PR links in the summary remain unchanged.
+These commits identify note edits, not necessarily the complete implementation. PR lookup is not automatic.
+
+Use the same exact compatible CLI version for PR generation, preview, and publication.
+The Action prepares complete base-branch history; source-enabled versioning rejects uncommitted notes or unprovable history before writes.
+Historical replay uses the selected release parent's configuration and history, even after the live URL or checkout remote changes.
+Complete-tree verification is unchanged. GitHub Release bodies come from the verified changelog without another source lookup.
+With changelog output disabled, PR details can show links, but preview and publication remain unsupported before remote writes.
+See the CLI [source-link rules](https://github.com/changenote/changenote/blob/main/docs/notes.md#automatic-commit-source-links) and [rollout limits](development.md#source-link-rollout).
+
 ## Tool setup
 
 Each Action accepts `version`. Standalone operation Actions install a prebuilt CLI wheel from PyPI with `uv tool install`, unless `cli-path` reuses an installation.

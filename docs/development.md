@@ -81,10 +81,10 @@ CI retains Rust for Cargo lockfile integration fixtures, not CLI installation.
 ## Published CLI compatibility
 
 PyPI and crates.io can publish different CLI versions. The default follows PyPI, not crates.io or Git main.
-During this change, the latest PyPI release is `0.9.2`, while crates.io provides `0.11.0`.
-PyPI `0.9.2` cannot parse Swift `.xcconfig` version files; the three existing Swift integration tests fail with that release.
-Do not skip those tests or use a different registry as a silent fallback.
-A CLI maintainer must separately publish compatible wheels before the full suite and that feature can pass with this installation route.
+Published PyPI CLI `0.13.0` supports Swift `.xcconfig` version files and `changelog.source_repository`.
+Use `version: 'v0.13.0'` for reproducible checks of the current integration fixtures.
+Older PyPI CLI `0.9.2` does not support these features.
+Do not skip tests or use a different registry as a silent fallback.
 Selecting an unpublished version fails; the Action does not build it from Git or Cargo.
 
 ## Action releases
@@ -126,19 +126,37 @@ For an unexpected CLI change with `latest`, select an exact version in the calle
 
 ## Action composition verification
 
-Local composition validation passed 184 integration tests and 51 metadata tests on an isolated composition branch with a locally built CLI 0.12.1 wheel.
+Local composition validation passed 184 integration tests and 51 metadata tests with an isolated CLI 0.12.1 wheel.
 The fixtures isolate the hosted runner ref; both suites also pass when the parent environment contains a PR merge ref.
-The published PyPI 0.9.2 installer remains unchanged; that CLI does not support the existing Swift fixtures.
-The compatible local wheel is test evidence, not a source-build fallback or proof that compatible artifacts exist on PyPI.
+[Hosted composition CI](https://github.com/changenote/action/actions/runs/43580500104) subsequently passed both suites with published PyPI CLI `0.13.0`.
+The production installer remains wheel-only and has no source-build fallback.
 
 The nine public Action definitions pass offline zizmor checks.
 Exact npm tool installation has a per-step annotation because it intentionally installs the caller's validated tool version without a project lockfile; lifecycle scripts are disabled.
 The existing workflow-level Dependabot cooldown and self-repository syntax advisories also occur on the unchanged baseline.
 They are not silently treated as a clean workflow security scan.
 
-The example repository's new interfaces remain inactive templates until a maintainer publishes and reviews the new Action SHA.
+The example repository has a pinned root workflow and inactive composition templates.
+Production pin updates still require a reviewed, published Action SHA.
 See [migration and production-pin requirements](migration.md#composable-action-interfaces).
 Hosted tools, token scopes, branch rules, and publication still need a separately authorized disposable-repository test.
+
+## Source-link rollout
+
+Source-link contract tests require a CLI with `changelog.source_repository` support.
+Published PyPI CLI `0.13.0` provides this feature; use the same exact `version: 'v0.13.0'` for PR generation, selection, and publication.
+Run the Action test suites with that installed executable on `PATH`.
+Unreleased CLI features can be tested locally with an isolated wheel built from a reviewed CLI revision.
+Local feature wheels do not change the production installer or add a source fallback.
+
+Enabling the setting remains a separate configuration change that requires authorization.
+No Action production-code change or new permission is needed for source rendering.
+Local mocks do not verify hosted event delivery, token scopes, branch rules, registry access, or actual publication.
+Validate those paths in an authorized disposable repository before production rollout; do not treat local completion as release approval.
+
+Before downgrading tooling, remove the setting if no batch has been generated.
+For an existing batch, keep compatible tooling and its historical configuration; do not edit generated links to force replay to pass.
+See the CLI [rollout and recovery rules](https://github.com/changenote/changenote/blob/main/docs/development.md#source-link-rollout).
 
 ## Verification limits
 
