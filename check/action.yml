@@ -1,6 +1,9 @@
 name: Changenote PR Check
 description: Check committed PR notes and report all pending releases without writes (Linux).
 inputs:
+  version:
+    description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
+    default: latest
   since:
     description: Available Git base ref for the PR comparison. The caller must provide the required history.
     required: true
@@ -26,6 +29,16 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Set up uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      with:
+        enable-cache: false
+    - name: Install changenote CLI
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
     - id: check
       shell: bash
       env:

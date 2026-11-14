@@ -19,7 +19,7 @@ class ReleaseMetadata(unittest.TestCase):
     def test_defaults_and_output_forwarding(self):
         self.assertEqual(self.action["runs"]["using"], "composite")
         defaults = {
-            "operation": "auto", "github-token": "${{ github.token }}",
+            "version": "latest", "operation": "auto", "github-token": "${{ github.token }}",
             "base-branch": "", "expected-release-commit": "", "retry": "false",
             "node-version": "lts/*", "npm-version": "", "rust-toolchain": "stable",
             "uv-version": "", "commit-message": "chore(release): version packages",
@@ -43,28 +43,24 @@ class ReleaseMetadata(unittest.TestCase):
         self.assertEqual(root["inputs"]["release-script"]["default"], "")
         self.assertIn("lifecycle.sh", root["runs"]["steps"][-1]["run"])
 
-    def test_setup_order_and_cache_hit_activation(self):
+    def test_setup_order_and_selected_cli_installation(self):
         labels = [step.get("name", step.get("uses")) for step in self.steps]
         self.assertEqual(labels, [
-            "Validate release inputs", "Identify trusted CLI source", "actions/cache@v5",
-            "dtolnay/rust-toolchain@stable", "Build trusted CLI", "Verify and activate CLI",
-            "Discover release environments", "actions/setup-node@v7", "Install selected npm version",
-            "astral-sh/setup-uv@v7", "Populate offline package caches", "Run release operation",
+            "Validate release inputs", "Set up uv", "Install changenote CLI",
+            "Discover release environments", "Set up Rust", "actions/setup-node@v7",
+            "Install selected npm version", "Populate offline package caches", "Run release operation",
         ])
-        cache = next(step for step in self.steps if step.get("id") == "cache")
-        self.assertEqual(cache["with"], {
-            "path": "${{ steps.cli.outputs.directory }}", "key": "${{ steps.cli.outputs.key }}",
-        })
-        self.assertEqual(self.step("Build trusted CLI")["if"], "steps.cache.outputs.cache-hit != 'true'")
-        self.assertNotIn("if", self.step("Verify and activate CLI"))
+        self.assertFalse(any(step.get("id") == "cache" for step in self.steps))
+        install = self.step("Install changenote CLI")
+        self.assertNotIn("if", install)
+        self.assertEqual(install["run"], 'bash "$ACTION_PATH/../scripts/action/install-cli.sh"')
+        self.assertEqual(install["env"]["INPUT_VERSION"], "${{ inputs.version }}")
         rust = next(step for step in self.steps if step.get("uses", "").startswith("dtolnay/"))
         self.assertEqual(rust["with"]["toolchain"], "${{ inputs.rust-toolchain }}")
-        self.assertNotIn("if", rust)  # The trusted CLI always needs Rust on a cache miss.
+        self.assertEqual(rust["if"], "steps.environment.outputs.cargo == 'true'")
+        self.assertLess(labels.index("Discover release environments"), labels.index("Set up Rust"))
         for name, script, operation in (
             ("Validate release inputs", "release.sh", "validate"),
-            ("Identify trusted CLI source", "install-cli.sh", "key"),
-            ("Build trusted CLI", "install-cli.sh", "install"),
-            ("Verify and activate CLI", "install-cli.sh", "activate"),
             ("Discover release environments", "release-environment.sh", "discover"),
             ("Populate offline package caches", "release-environment.sh", "warm"),
             ("Run release operation", "release.sh", "run"),
@@ -78,8 +74,9 @@ class ReleaseMetadata(unittest.TestCase):
         self.assertEqual(node["with"], {
             "node-version": "${{ inputs.node-version }}", "package-manager-cache": "false",
         })
-        self.assertEqual(uv["if"], "steps.environment.outputs.uv == 'true'")
-        self.assertEqual(uv["with"]["version"], "${{ inputs.uv-version }}")
+        self.assertNotIn("if", uv)
+        self.assertEqual(uv["with"], {"version": "${{ inputs.uv-version }}", "enable-cache": "false"})
+        self.assertLess(self.steps.index(uv), self.steps.index(self.step("Install changenote CLI")))
         npm = self.step("Install selected npm version")
         self.assertEqual(npm["if"], "steps.environment.outputs.npm == 'true' && inputs.npm-version != ''")
         self.assertEqual(npm["env"], {"INPUT_NPM_VERSION": "${{ inputs.npm-version }}"})
@@ -99,9 +96,9 @@ class ReleaseMetadata(unittest.TestCase):
         for key in ("operation", "expected-release-commit", "retry", "npm-version", "rust-toolchain"):
             self.assertEqual(validate["env"]["INPUT_" + key.upper().replace("-", "_")], "${{ inputs." + key + " }}")
         self.assertNotIn("GH_TOKEN", validate["env"])
-        for name in ("Identify trusted CLI source", "Build trusted CLI", "Verify and activate CLI"):
-            self.assertNotIn("GH_TOKEN", self.step(name)["env"])
-            self.assertEqual(self.step(name)["env"]["INPUT_RUST_TOOLCHAIN"], "${{ inputs.rust-toolchain }}")
+        install = self.step("Install changenote CLI")
+        self.assertNotIn("GH_TOKEN", install["env"])
+        self.assertNotIn("INPUT_RUST_TOOLCHAIN", install["env"])
         for name in ("Discover release environments", "Populate offline package caches", "Run release operation"):
             env = self.step(name)["env"]
             self.assertEqual(env["INPUT_OPERATION"], "${{ steps.inputs.outputs.operation }}")

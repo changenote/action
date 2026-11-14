@@ -4,11 +4,27 @@ GitHub Actions for [changenote](https://github.com/changenote/changenote) releas
 
 | Entry point | Purpose | CLI setup |
 | --- | --- | --- |
-| `changenote/action/release` | Manage release PRs and publish tags and GitHub Releases. | Installs the trusted pinned CLI and prepares package-manager caches. |
-| `changenote/action` | Manage release PRs and run optional project publication scripts. | Caller installs the CLI. |
-| `changenote/action/check` | Check contributor PR notes with read-only permissions. | Caller installs the CLI. |
-| `changenote/action/preview` | Inspect the latest validated publication batch without remote writes. | Caller installs the CLI. |
-| `changenote/action/publish` | Publish tags and GitHub Releases for a validated batch. | Caller installs the CLI. |
+| `changenote/action/release` | Manage release PRs and publish tags and GitHub Releases. | Installs the selected CLI and prepares package-manager caches. |
+| `changenote/action` | Manage release PRs and run optional project publication scripts. | Installs the selected CLI. |
+| `changenote/action/check` | Check contributor PR notes with read-only permissions. | Installs the selected CLI. |
+| `changenote/action/preview` | Inspect the latest validated publication batch without remote writes. | Installs the selected CLI. |
+| `changenote/action/publish` | Publish tags and GitHub Releases for a validated batch. | Installs the selected CLI. |
+
+All five Actions accept `version`, the changenote CLI version to install from PyPI with uv.
+It defaults to `latest`, the latest stable published version. Use an exact version for repeatable runs:
+
+```yaml
+- uses: changenote/action/release@<full-action-commit-sha>
+  with:
+    version: 'v0.1.0'
+```
+
+Exact versions require the `v` prefix and must be published on PyPI.
+Bare versions, version ranges, Git revisions, and prereleases are rejected.
+Each Action sets up uv and installs a prebuilt CLI wheel outside the consumer checkout.
+CLI installation does not require Rust and does not fall back to a source build.
+The Action does not pin a CLI version; pinning the Action SHA alone does not pin `latest`.
+Use a PyPI version that supports your configuration; see [Published CLI compatibility](docs/development.md#published-cli-compatibility).
 
 ## Release workflow
 
@@ -46,15 +62,15 @@ The root Action runs project publication scripts only when explicitly configured
 ## Documentation
 
 - [GitHub Actions guide](docs/github-actions.md): setup, permissions, operations, project scripts, and external CI.
-- [Lower-level reference](docs/github-actions-reference.md): caller-installed CLI, PR management, preview, and publication.
+- [Lower-level reference](docs/github-actions-reference.md): PR management, preview, and publication.
 - [PR note checks](docs/checks.md): read-only contributor checks.
 - [Example workflows](examples/github-actions/): release, project scripts, and external CI.
-- [Development](docs/development.md): trusted CLI pin, independent Action releases, and local checks.
+- [Development](docs/development.md): CLI installation, independent Action releases, and local checks.
 - [Repository migration](docs/migration.md): publication order, new SHA selection, and verification limits.
 
 The CLI source and its crates.io and PyPI publication remain in [changenote/changenote](https://github.com/changenote/changenote).
 The Action has its own version in `VERSION`; its first planned release is `v0.0.1`.
-The CLI version and source revision are pinned separately in `cli-source.env`.
+The `version` input selects the CLI independently of the Action's version.
 See [Action releases](docs/development.md#action-releases) for this repository's release workflow.
 
 The project uses the [MIT license](LICENSE).

@@ -71,15 +71,14 @@ class RepositoryRelease(unittest.TestCase):
         self.assertEqual(config["$schema"],
                          "https://raw.githubusercontent.com/changenote/changenote/main/schema.json")
         self.assertRegex((ROOT / "VERSION").read_text(), r"^[0-9]+\.[0-9]+\.[0-9]+\n$")
-        self.assertRegex((ROOT / "cli-source.env").read_text(),
-                         r"(?m)^CLI_VERSION=[0-9]+\.[0-9]+\.[0-9]+$")
+        self.assertFalse((ROOT / "cli-source.env").exists())
 
     def test_status_is_read_only_and_first_release_is_v0_0_1(self):
         cli = shutil.which("changenote")
         self.assertIsNotNone(cli, "Install the trusted CLI before running repository release tests.")
 
         def snapshot():
-            paths = {ROOT / "VERSION", ROOT / "cli-source.env", ROOT / "CHANGELOG.md"}
+            paths = {ROOT / "VERSION", ROOT / "CHANGELOG.md"}
             paths.update((ROOT / ".changenote").glob("*"))
             return {str(path): path.read_bytes() if path.is_file() else None for path in paths}
 
@@ -103,7 +102,7 @@ class RepositoryRelease(unittest.TestCase):
 
     def test_ci_checks_the_plan_after_installing_the_trusted_cli(self):
         steps = read_yaml(ROOT / ".github/workflows/ci.yml")["jobs"]["actions"]["steps"]
-        install = next(step for step in steps if step.get("name") == "Install trusted CLI")
+        install = next(step for step in steps if step.get("name") == "Install changenote CLI")
         check = next(step for step in steps if step.get("name") == "Check Action release plan")
         self.assertEqual(check["run"], "changenote status")
         self.assertLess(steps.index(install), steps.index(check))

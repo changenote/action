@@ -1,6 +1,9 @@
 name: Changenote Publication Preview
 description: Inspect the latest validated batch without changing source Git state or publishing (Linux).
 inputs:
+  version:
+    description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
+    default: latest
   github-token:
     description: Token with contents read permission.
     default: ${{ github.token }}
@@ -23,6 +26,16 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Set up uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      with:
+        enable-cache: false
+    - name: Install changenote CLI
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
     - id: preview
       shell: bash
       env:

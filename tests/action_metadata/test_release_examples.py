@@ -94,7 +94,7 @@ class ReleaseExamples(unittest.TestCase):
         for key in (*action["inputs"], *action["outputs"]):
             self.assertIn("`" + key + "`", guide)
         self.assertIn("full-tree", guide)
-        self.assertIn("Hosted cache restoration", guide)
+        self.assertIn("Hosted tool installation", guide)
         self.assertIn("docs/github-actions.md", (ROOT / "README.md").read_text())
 
 

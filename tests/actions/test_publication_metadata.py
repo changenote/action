@@ -22,7 +22,9 @@ class PublicationMetadata(unittest.TestCase):
         # These public Actions use single-line run commands and env values only.
         path = test_actions.SOURCE / action / "action.yml"
         text = path.read_text()
-        commands = re.findall(r"^      run: (.+)$", text, re.MULTILINE)
+        # Installation has its own isolated tests; execute this operation step only.
+        operation = text.split(f"    - id: {action}\n", 1)[1]
+        commands = re.findall(r"^      run: (.+)$", operation, re.MULTILINE)
         self.assertEqual(len(commands), 1)
         self.assertNotIn("${{", commands[0])
         inputs = {
@@ -32,7 +34,7 @@ class PublicationMetadata(unittest.TestCase):
         }
         bindings = re.findall(
             r"^        ([A-Z_]+): \$\{\{ (github\.action_path|inputs\.[\w-]+) \}\}$",
-            text, re.MULTILINE,
+            operation, re.MULTILINE,
         )
         if action == "publish":
             self.assertIn(

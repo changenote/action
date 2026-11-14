@@ -17,6 +17,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
+      # Rust is used by Cargo lockfile integration fixtures, not CLI installation.
       - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
@@ -32,12 +33,10 @@ jobs:
           shellcheck -x scripts/action/*.sh
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.11
           "$(go env GOPATH)/bin/actionlint"
-      - name: Install trusted CLI
+      - name: Install changenote CLI
         env:
-          ACTION_PATH: ${{ github.workspace }}/release
-        run: |
-          bash scripts/action/install-cli.sh install
-          bash scripts/action/install-cli.sh activate
+          INPUT_VERSION: latest
+        run: bash scripts/action/install-cli.sh
       - name: Check Action release plan
         run: changenote status
       - run: uv run --no-project python -m unittest discover -s tests/actions -v

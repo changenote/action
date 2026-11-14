@@ -75,7 +75,7 @@ class CheckAction(unittest.TestCase):
         self.env["CHECK_REPORT"] = json.dumps(self.report) if report is None else report
         self.env["RELEASE_PLAN"] = json.dumps(self.plan) if plan is None else plan
         result = subprocess.run(
-            ["bash", "-c", self.metadata["runs"]["steps"][0]["run"]],
+            ["bash", "-c", next(step for step in self.metadata["runs"]["steps"] if step.get("id") == "check")["run"]],
             cwd=self.repo, env=self.env, text=True, capture_output=True, timeout=30,
         )
         self.assertFalse((self.top / "forbidden").exists())
@@ -86,15 +86,16 @@ class CheckAction(unittest.TestCase):
     def test_metadata_and_consumer_path(self):
         self.assertEqual(self.metadata["runs"]["using"], "composite")
         inputs = self.metadata["inputs"]
-        self.assertEqual(set(inputs), {"since", "coverage", "skip-release", "reason"})
+        self.assertEqual(set(inputs), {"version", "since", "coverage", "skip-release", "reason"})
         self.assertEqual(inputs["since"]["required"], "true")
         self.assertNotIn("default", inputs["since"])
         self.assertEqual(inputs["coverage"]["default"], "package")
-        step = self.metadata["runs"]["steps"][0]
+        step = next(step for step in self.metadata["runs"]["steps"] if step.get("id") == "check")
         self.assertEqual(step["shell"], "bash")
         self.assertEqual(step["env"]["ACTION_PATH"], "${{ github.action_path }}")
         self.assertNotIn("${{", step["run"])
-        for key in inputs:
+        self.assertEqual(inputs["version"]["default"], "latest")
+        for key in set(inputs) - {"version"}:
             self.assertEqual(step["env"]["INPUT_" + key.upper().replace("-", "_")], "${{ inputs." + key + " }}")
         result, outputs = self.run_action()
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)

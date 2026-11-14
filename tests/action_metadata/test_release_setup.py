@@ -1,4 +1,4 @@
-"""Exercise trusted CLI installation and cache activation without building Rust."""
+"""Exercise isolated PyPI installation with a uv stub; never build consumer code."""
 
 import os
 from pathlib import Path
@@ -14,150 +14,147 @@ class ReleaseSetup(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory()
         self.addCleanup(temporary.cleanup)
         self.top = Path(temporary.name)
-        self.source = self.top / "trusted action"
-        (self.source / "release").mkdir(parents=True)
-        self.pin = self.source / "cli-source.env"
-        self.pin.write_text(
-            'CLI_REPOSITORY=https://github.com/changenote/changenote\n'
-            'CLI_REVISION=' + 'a' * 40 + '\nCLI_VERSION=9.8.7\n'
-        )
         self.consumer = self.top / "consumer"
-        (self.consumer / "src").mkdir(parents=True)
-        (self.consumer / "Cargo.toml").write_text('[package]\nname = "changenote"\nversion = "0.0.0"\nbuild = "build.rs"\n')
-        (self.consumer / "Cargo.lock").write_text("consumer lock\n")
-        (self.consumer / "src/main.rs").write_text("untrusted consumer source\n")
-        (self.consumer / "rust-toolchain.toml").write_text('[toolchain]\nchannel = "not-selected-toolchain"\n')
-        (self.consumer / "build.rs").write_text('compile_error!("must not build consumer");\n')
+        self.consumer.mkdir()
+        (self.consumer / "pyproject.toml").write_text("invalid consumer project\n")
+        (self.consumer / "uv.toml").write_text("invalid consumer config\n")
+        (self.consumer / ".python-version").write_text("not-selected\n")
+        self.runner = self.top / "runner temp"
+        self.runner.mkdir()
         self.bin = self.top / "bin"
         self.bin.mkdir()
-        self.calls = self.top / "cargo-calls"
-        stub = self.bin / "cargo"
-        stub.write_text(
-            '#!/usr/bin/env bash\nset -eu\n'
-            'printf "%s\\0" "$@" >> "$CARGO_CALLS"\n'
-            'printf "%s" "$RUSTUP_TOOLCHAIN" > "$CARGO_CALLS.toolchain"\n'
-            'pwd > "$CARGO_CALLS.cwd"\n'
-            'while [[ $# -gt 0 ]]; do\n'
-            '  if [[ $1 == --root ]]; then root=$2; shift; fi\n'
-            '  shift\ndone\n'
-            'mkdir -p "$root/bin"\n'
-            'printf "%s\\n" \'#!/bin/sh\' \'printf "%s\\n" "changenote 9.8.7"\' > "$root/bin/changenote"\n'
-            'chmod +x "$root/bin/changenote"\n'
-        )
-        stub.chmod(0o755)
-        self.output = self.top / "output"
+        self.calls = self.top / "calls"
         self.path_file = self.top / "path"
         self.path_file.write_text("")
+        stub = self.bin / "uv"
+        stub.write_text(
+            '#!/usr/bin/env bash\nset -eu\n'
+            'printf "%s\\0" "$@" >> "$CALLS"\n'
+            'pwd > "$CALLS.cwd"\n'
+            'printf "%s\\n" "$UV_TOOL_DIR" "$UV_TOOL_BIN_DIR" > "$CALLS.directories"\n'
+            'printf "%s|%s|%s" "${GH_TOKEN-unset}" "${GITHUB_TOKEN-unset}" '
+            '"${INPUT_GITHUB_TOKEN-unset}" > "$CALLS.tokens"\n'
+            '[[ ${MODE:-} != failure ]] || exit 7\n'
+            '[[ ${MODE:-} != missing ]] || exit 0\n'
+            'mkdir -p "$UV_TOOL_DIR/changenote/bin" "$UV_TOOL_BIN_DIR"\n'
+            'binary="$UV_TOOL_DIR/changenote/bin/changenote"\n'
+            'printf "%s\\n" \'#!/usr/bin/env bash\' '
+            '\'printf "%s\\n" "${REPORTED_VERSION:-changenote 9.8.7}"\' > "$binary"\n'
+            'if [[ ${MODE:-} != nonexecutable ]]; then chmod +x "$binary"; fi\n'
+            'if [[ ${MODE:-} == outside ]]; then\n'
+            '  cp "$binary" "$CALLS.outside"\n'
+            '  binary="$CALLS.outside"\nfi\n'
+            'ln -s "$binary" "$UV_TOOL_BIN_DIR/changenote"\n'
+        )
+        stub.chmod(0o755)
+        cargo = self.bin / "cargo"
+        cargo.write_text('#!/usr/bin/env bash\ntouch "$CALLS.cargo"\nexit 99\n')
+        cargo.chmod(0o755)
         self.env = dict(os.environ, PATH=str(self.bin) + ":" + os.environ["PATH"],
-                        ACTION_PATH=str(self.source / "release"),
-                        RUNNER_TEMP=str(self.top / "runner temp"),
-                        GITHUB_OUTPUT=str(self.output), GITHUB_PATH=str(self.path_file),
-                        INPUT_RUST_TOOLCHAIN="stable", CARGO_CALLS=str(self.calls))
+                        RUNNER_TEMP=str(self.runner), GITHUB_PATH=str(self.path_file),
+                        CALLS=str(self.calls), GH_TOKEN="must-not-leak",
+                        GITHUB_TOKEN="must-not-leak", INPUT_GITHUB_TOKEN="must-not-leak",
+                        UV_TOOL_DIR=str(self.top / "unused tools"),
+                        UV_TOOL_BIN_DIR=str(self.top / "unused bin"))
+        for key in ("INPUT_VERSION", "REPORTED_VERSION", "MODE"):
+            self.env.pop(key, None)
 
-    def run_setup(self, operation, ok=True):
-        self.output.write_text("")
+    def run_setup(self, ok=True):
+        before = {str(p): p.read_bytes() for p in self.consumer.rglob("*") if p.is_file()}
         result = subprocess.run(
-            ["bash", str(ROOT / "scripts/action/install-cli.sh"), operation],
+            ["bash", str(ROOT / "scripts/action/install-cli.sh")],
             cwd=self.consumer, env=self.env, text=True, capture_output=True, timeout=30,
         )
         if ok:
             self.assertEqual(result.returncode, 0, result.stderr + result.stdout)
-        values = dict(line.split("=", 1) for line in self.output.read_text().splitlines())
-        return result, values
+        self.assertEqual(before, {
+            str(p): p.read_bytes() for p in self.consumer.rglob("*") if p.is_file()
+        })
+        self.assertFalse(Path(str(self.calls) + ".cargo").exists())
+        self.assertFalse((self.top / "unused tools").exists())
+        self.assertFalse((self.top / "unused bin").exists())
+        return result
 
-    def key(self):
-        _, values = self.run_setup("key")
-        self.assertEqual(set(values), {"directory", "key"})
-        self.assertTrue(values["key"].startswith("changenote-"))
-        self.assertRegex(Path(values["directory"]).name, r"^[0-9a-f]{64}$")
-        self.assertEqual(Path(values["directory"]).parent, Path(self.env["RUNNER_TEMP"]) / "changenote-cli")
-        return values
+    def arguments(self):
+        return self.calls.read_bytes().decode().split("\0")[:-1]
 
-    def test_source_and_toolchain_define_cache_not_consumer_checkout(self):
-        original = self.key()
-        (self.consumer / "Cargo.toml").write_text("malicious replacement\n")
-        (self.consumer / "Cargo.lock").write_text("malicious lock\n")
-        (self.consumer / "src/main.rs").write_text("malicious source\n")
-        self.assertEqual(self.key(), original)
-        before = self.pin.read_text()
-        for value, replacement in (
-            ("changenote/changenote", "test/other-cli"),
-            ("a" * 40, "b" * 40),
-            ("9.8.7", "9.8.8"),
-        ):
-            with self.subTest(pin=value):
-                self.pin.write_text(before.replace(value, replacement))
-                self.assertNotEqual(self.key(), original)
-                self.pin.write_text(before)
-        self.env["INPUT_RUST_TOOLCHAIN"] = "1.85.0"
-        self.assertNotEqual(self.key(), original)
-        self.assertFalse(self.calls.exists())
-        self.assertEqual(self.path_file.read_text(), "")
-
-    def test_install_uses_action_source_and_activates_verified_binary(self):
-        key = self.key()
-        self.run_setup("install")
-        self.assertEqual(self.calls.read_bytes().split(b"\0")[:-1], [
-            b"install", b"--git", b"https://github.com/changenote/changenote",
-            b"--rev", b"a" * 40, b"--locked", b"--root", os.fsencode(key["directory"]),
+    def test_default_installs_latest_wheel_from_pypi_outside_consumer(self):
+        self.run_setup()
+        directory = Path(self.path_file.read_text().strip()).parent
+        self.assertEqual(directory.parent, self.runner)
+        self.assertEqual(self.arguments(), [
+            "tool", "install", "--no-config", "--no-sources", "--no-cache", "--no-build",
+            "--default-index", "https://pypi.org/simple", "--resolution", "highest",
+            "--prerelease", "disallow", "changenote",
         ])
-        self.assertEqual(Path(str(self.calls) + ".toolchain").read_text(), "stable")
-        self.assertEqual(Path(str(self.calls) + ".cwd").read_text().strip(), str(self.source))
-        self.assertEqual(self.path_file.read_text(), "")
-        self.run_setup("activate")
-        self.assertEqual(self.path_file.read_text(), key["directory"] + "/bin\n")
-        self.assertEqual((self.consumer / "src/main.rs").read_text(), "untrusted consumer source\n")
-        self.assertFalse((self.consumer / "target").exists())
+        self.assertEqual(Path(str(self.calls) + ".cwd").read_text().strip(), str(directory))
+        self.assertEqual(Path(str(self.calls) + ".directories").read_text().splitlines(), [
+            str(directory / "tools"), str(directory / "bin"),
+        ])
+        self.assertEqual(Path(str(self.calls) + ".tokens").read_text(), "unset|unset|unset")
+        self.assertTrue((directory / "bin/changenote").is_symlink())
 
-    def test_invalid_cli_pins_fail_before_installation(self):
-        before = self.pin.read_text()
-        for value, replacement in (("a" * 40, "main"), ("9.8.7", "invalid")):
-            with self.subTest(pin=value):
-                self.pin.write_text(before.replace(value, replacement))
-                result, outputs = self.run_setup("install", ok=False)
+    def test_v_prefix_is_removed_only_for_the_exact_package_requirement(self):
+        self.env["INPUT_VERSION"] = "v9.8.7"
+        self.run_setup()
+        self.assertEqual(self.arguments()[-1], "changenote==9.8.7")
+
+    def test_latest_and_empty_values_do_not_reuse_a_stale_install(self):
+        for version in ("latest", ""):
+            with self.subTest(version=version):
+                self.env["INPUT_VERSION"] = version
+                self.calls.unlink(missing_ok=True)
+                self.run_setup()
+                self.assertEqual(self.arguments()[-1], "changenote")
+        paths = self.path_file.read_text().splitlines()
+        self.assertEqual(len(paths), 2)
+        self.assertNotEqual(paths[0], paths[1])
+
+    def test_bare_and_invalid_versions_fail_before_installation_or_activation(self):
+        for version in ("9.8.7", "0.1.0", "main", "vlatest", "v1", "v1.2", "v01.2.3",
+                        "v1.2.3-beta.1", "v1.2.3+build", "^v1.2.3", ">=v1.2.3",
+                        "https://example.invalid/cli", "--root", "v1.2.3\n",
+                        "$(touch injected)", "v1.2.3; touch injected"):
+            with self.subTest(version=version):
+                self.env["INPUT_VERSION"] = version
+                result = self.run_setup(ok=False)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertEqual(outputs, {})
+                self.assertIn("version must be latest or an exact stable version with a v prefix", result.stderr)
                 self.assertFalse(self.calls.exists())
                 self.assertEqual(self.path_file.read_text(), "")
-                self.pin.write_text(before)
+                self.assertEqual(list(self.runner.iterdir()), [])
 
-    def test_cache_hit_activation_does_not_call_cargo(self):
-        directory = Path(self.key()["directory"])
-        (directory / "bin").mkdir(parents=True)
-        cached = directory / "bin/changenote"
-        cached.write_text('#!/bin/sh\nprintf "%s\\n" "changenote 9.8.7"\n')
-        cached.chmod(0o755)
-        self.run_setup("activate")
-        self.assertEqual(self.path_file.read_text(), str(directory / "bin") + "\n")
-        self.assertFalse(self.calls.exists())
-        self.env["INPUT_RUST_TOOLCHAIN"] = "nightly"
-        result, _ = self.run_setup("activate", ok=False)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(self.path_file.read_text(), str(directory / "bin") + "\n")
+    def test_installation_failure_does_not_activate_an_existing_cli(self):
+        self.env["MODE"] = "failure"
+        result = self.run_setup(ok=False)
+        self.assertEqual(result.returncode, 7)
+        self.assertEqual(self.path_file.read_text(), "")
 
-    def test_missing_mismatched_and_symlinked_cached_cli_are_not_activated(self):
-        directory = Path(self.key()["directory"])
-        cached = directory / "bin/changenote"
-        result, _ = self.run_setup("activate", ok=False)
+    def test_missing_and_nonexecutable_binaries_are_rejected(self):
+        for mode in ("missing", "nonexecutable"):
+            with self.subTest(mode=mode):
+                self.env["MODE"] = mode
+                result = self.run_setup(ok=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("executable file", result.stderr)
+                self.assertEqual(self.path_file.read_text(), "")
+
+    def test_symlinks_outside_the_tool_environment_are_rejected(self):
+        self.env["MODE"] = "outside"
+        result = self.run_setup(ok=False)
         self.assertNotEqual(result.returncode, 0)
+        self.assertIn("stay inside its tool environment", result.stderr)
         self.assertEqual(self.path_file.read_text(), "")
-        cached.parent.mkdir(parents=True)
-        cached.write_text('#!/bin/sh\nprintf "%s\\n" "changenote 0.0.0"\n')
-        cached.chmod(0o755)
-        result, _ = self.run_setup("activate", ok=False)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("version differs", result.stderr)
-        self.assertEqual(self.path_file.read_text(), "")
-        cached.unlink()
-        target = self.top / "consumer-cli"
-        target.write_text('#!/bin/sh\nprintf "%s\\n" "changenote 9.8.7"\n')
-        target.chmod(0o755)
-        cached.symlink_to(target)
-        result, _ = self.run_setup("activate", ok=False)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("regular file", result.stderr)
-        self.assertEqual(self.path_file.read_text(), "")
-        self.assertFalse(self.calls.exists())
+
+    def test_mismatched_and_invalid_versions_are_not_activated(self):
+        self.env["INPUT_VERSION"] = "v9.8.7"
+        for reported in ("changenote 0.0.1", "other 9.8.7", "changenote 9.8.7-beta.1",
+                         "changenote 09.8.7", "changenote 9.8.7\nextra"):
+            with self.subTest(reported=reported):
+                self.env["REPORTED_VERSION"] = reported
+                result = self.run_setup(ok=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.path_file.read_text(), "")
 
 
 if __name__ == "__main__":
