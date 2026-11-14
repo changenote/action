@@ -137,7 +137,22 @@ No upstream change, source installation, or tag-generation fallback is needed.
 
 Validation tools: changenote `0.13.0`, uv `0.13.5`, PyYAML `6.0.3`, jq `1.8.1`, ShellCheck `0.11.0`, actionlint `1.7.11`, and zizmor `1.32.0`.
 Missing tools were installed outside the repository.
-Final candidate test and static-check results must be recorded here after validation.
+Bash syntax, ShellCheck, actionlint, offline zizmor, `changenote status`, and `git diff --check` passed.
+The 61 non-worktree metadata checks passed locally, including Markdown paths/anchors and YAML example contracts.
+
+[Implementation CI](https://github.com/changenote/action/actions/runs/43598901257) passed 215 integration tests and all 62 metadata tests (both exit 0) at `683d59965ff2874069ccc8f9595bd51e173d6679`.
+CI selected published PyPI CLI `0.13.1` through the unchanged `latest` policy; the local compatibility probe used `0.13.0`.
+The first CI run found six failures in remaining old-mode fixtures and private token fallback. These were corrected before the passing runs; no required gate was waived.
+The full diff was reviewed for correctness, security, lifecycle safety, compatibility, regressions, and scope. Wrong-branch rejection has explicit coverage even with preparation disabled.
+
+The verified source/test diff SHA-256 is `89840be752e6ab886c841d5aa7f591c875a7fa72e84acfbadea7f1d92395bbc1`:
+
+```sh
+git diff --binary 51cbfee2492850a8a5f3e131572c07914dd2f84a -- action.yml manage-pr/action.yml scripts/action tests | sha256sum
+```
+
+Documentation-only evidence updates do not change this identity.
+[PR checks](https://github.com/changenote/action/pull/11/checks) retain complete test results for the final revision.
 
 The full integration suite and the metadata consumer-checkout smoke test create disposable Git worktrees.
 They require an authorized runner; this agent session prohibits worktree creation.

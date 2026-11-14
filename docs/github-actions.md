@@ -152,7 +152,8 @@ If a newer release batch has replaced the selected batch, the old run fails inst
 Inspect state and recover explicitly; do not move tags or replace published packages automatically.
 
 Replace `publish-command` with `publish-script` and `release-command` with `release-script` in workflows.
-The old input names are not supported. Script text, execution order, and empty defaults are unchanged.
+The old input names are not supported. Script text, empty defaults, and the scripts' relative order are unchanged.
+Selected built-in publication now runs between the scripts.
 
 Consumers of the older root Action must restrict invocation to base-branch `push` and `workflow_dispatch` events.
 Do not use the root on contributor PRs. Use `/check` for read-only note checks.
