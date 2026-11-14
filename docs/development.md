@@ -127,6 +127,7 @@ For an unexpected CLI change with `latest`, select an exact version in the calle
 ## Action composition verification
 
 Local composition validation passed 184 integration tests and 51 metadata tests on an isolated composition branch with a locally built CLI 0.12.1 wheel.
+The fixtures isolate the hosted runner ref; both suites also pass when the parent environment contains a PR merge ref.
 The published PyPI 0.9.2 installer remains unchanged; that CLI does not support the existing Swift fixtures.
 The compatible local wheel is test evidence, not a source-build fallback or proof that compatible artifacts exist on PyPI.
 

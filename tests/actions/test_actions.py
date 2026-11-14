@@ -36,7 +36,9 @@ class Actions(unittest.TestCase):
             GIT_AUTHOR_EMAIL="test@example.com",
             GIT_COMMITTER_EMAIL="test@example.com",
         )
+        # Fixtures define their own event context, not the hosted runner ref.
         self.env.pop("GITHUB_ACTIONS", None)
+        self.env.pop("GITHUB_REF", None)
         self.env.pop("INPUT_BASE_BRANCH", None)
         self.env["PATH"] = str(self.bin) + ":" + self.env["PATH"]
         self.state_path = self.top / "github.json"
