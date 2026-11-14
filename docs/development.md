@@ -93,10 +93,9 @@ CI validates the plan with the installed CLI.
 The first version PR generates `CHANGELOG.md` and `.changenote/releases.json`, updates `VERSION`, and consumes the initial note.
 Those generated files are not created by this setup change.
 
-The repository's Release workflow still uses an earlier reviewed full SHA of `changenote/action/release`.
-That immutable revision keeps its historical CLI source pin and does not accept the new `version` input.
-This change cannot modify an already pinned Action implementation.
-After a new implementation is reviewed, update the workflow's Action SHA separately before using `version` there.
+The repository's Release workflow pins a full SHA of `changenote/action/release` that installs the CLI from PyPI.
+It accepts the `version` input and defaults to `latest`, the latest stable published CLI.
+Update the workflow's Action SHA separately after reviewing a newer implementation.
 Do not invent a new SHA or change to an unpinned branch as a shortcut.
 
 On pushes to `main`, `auto` manages the version PR and publishes incomplete validated batches.
