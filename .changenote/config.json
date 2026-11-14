@@ -1,0 +1,9 @@
+{
+  "$schema": "https://raw.githubusercontent.com/changenote/changenote/main/schema.json",
+  "packages": {
+    "action": {
+      "path": ".",
+      "version_file": "VERSION"
+    }
+  }
+}

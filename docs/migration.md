@@ -22,7 +22,9 @@ Existing full-SHA references to old Action commits remain valid. The move does n
 The Action repository also owns shared scripts, Action tests, consumer workflows, and Action guides.
 The CLI repository retains Rust code, the Python distribution, CLI guides, and its own release workflow.
 Its crates.io helper is now `scripts/publish-crate.py`; crates.io and PyPI publication are not shared Action features.
-The CLI and Action share the same release version, but have separate commit SHAs.
+The CLI and Action have independent versions and commit SHAs.
+The Action's first planned release is `v0.0.1`; its CLI pin remains separate.
+See [Action releases](development.md#action-releases) for version PRs and publication.
 
 ## Trusted CLI source
 

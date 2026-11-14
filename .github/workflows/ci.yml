@@ -38,5 +38,7 @@ jobs:
         run: |
           bash scripts/action/install-cli.sh install
           bash scripts/action/install-cli.sh activate
+      - name: Check Action release plan
+        run: changenote status
       - run: uv run --no-project python -m unittest discover -s tests/actions -v
       - run: uv run --no-project --with pyyaml python -m unittest discover -s tests/action_metadata -v
