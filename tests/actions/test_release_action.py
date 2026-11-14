@@ -44,6 +44,16 @@ class RootAction(unittest.TestCase):
             self.assertEqual(set(outputs), OUTPUTS)
         return result, outputs
 
+    def test_wrong_branch_cannot_publish_after_pr_branch_rejection(self):
+        self.f.release()
+        self.f.env.update(GITHUB_REF="refs/heads/other", INPUT_PREPARE="false")
+        for publication in (True, False):
+            result, out = self.run_root(publication=publication, ok=False)
+            self.assertIn("selected base branch", result.stderr)
+            self.assertEqual(out, {})
+            self.assertEqual(self.f.state()["releases"], [])
+            self.assertEqual(self.f.git("ls-remote", "--tags", "origin"), "")
+
     def test_defaults_and_whitespace_scripts_do_not_select_a_saved_batch(self):
         self.f.release()
         log = self.f.log_cli_calls()

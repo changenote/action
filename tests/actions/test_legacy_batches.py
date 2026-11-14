@@ -20,6 +20,7 @@ class LegacyBatches(unittest.TestCase):
         event = self.f.top / "event.json"
         event.write_text(json.dumps({"forced": False, "deleted": False}))
         self.f.env.update(GITHUB_EVENT_NAME="push", GITHUB_EVENT_PATH=str(event),
+                          GITHUB_REF="refs/heads/main",
                           INPUT_PUSH_GIT_TAGS="true", INPUT_CREATE_GITHUB_RELEASES="true")
 
     def legacy_release(self, flat=False):

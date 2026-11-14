@@ -5,10 +5,14 @@ set -euo pipefail
 # shellcheck source=scripts/action/publication.sh
 source "${BASH_SOURCE[0]%/*}/publication.sh"
 
-route_managed_release() {
-  export GH_TOKEN=${INPUT_GITHUB_TOKEN:?github-token is required}
+check_root_branch() {
+  export GH_TOKEN=${INPUT_GITHUB_TOKEN:-${GH_TOKEN:?github-token is required}}
   setup_readonly
   [[ ${GITHUB_REF:-} == "refs/heads/$base" ]] || fail 'Run the root Action on its selected base branch.'
+}
+
+route_managed_release() {
+  check_root_branch
   local scripts expected after
   scripts=$(cd -- "${BASH_SOURCE[0]%/*}" && pwd)
   for tool in uv python3; do command -v "$tool" >/dev/null || fail "Missing prerequisite: $tool"; done
@@ -71,6 +75,9 @@ run_trusted_script() {
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then
-  [[ ${1:-} == route ]] || fail 'Unknown lifecycle operation.'
-  route_managed_release
+  case ${1:-} in
+    route) route_managed_release ;;
+    check-base) check_root_branch ;;
+    *) fail 'Unknown lifecycle operation.' ;;
+  esac
 fi

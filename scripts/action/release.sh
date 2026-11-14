@@ -60,6 +60,9 @@ expected=''
 if [[ $has_scripts == true && $GITHUB_EVENT_NAME == push ]]; then
   run_script lifecycle route
   expected=$(value lifecycle release-commit)
+else
+  # Branch rejection is not an independent PR-maintenance failure.
+  run_script lifecycle check-base
 fi
 release_selected=false
 if [[ $GITHUB_EVENT_NAME == push ]]; then

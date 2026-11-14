@@ -373,6 +373,7 @@ Legacy note-bearing batches remain read-only and require complete existing tags 
 
 Root owns PR execution once per run and the final PR failure status.
 Invalid managed-merge routing stops before PR writes.
+Root rejects a wrong base-branch ref before any PR work, even without scripts and with preparation disabled.
 A PR-management failure does not suppress eligible verified follow-up work; the run still reports the PR error.
 Current-plan preparation failure does not suppress independently verified selected release work.
 CLI installation, required tool installation, and historical-environment failures stop the Action.
