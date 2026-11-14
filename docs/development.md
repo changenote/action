@@ -93,11 +93,10 @@ CI validates the plan with the installed CLI.
 The first version PR generates `CHANGELOG.md` and `.changenote/releases.json`, updates `VERSION`, and consumes the initial note.
 Those generated files are not created by this setup change.
 
-The repository's Release workflow still uses an earlier reviewed full SHA of `changenote/action/release`.
-That immutable revision keeps its historical CLI source pin and does not accept the new `version` input.
-This change cannot modify an already pinned Action implementation.
-After a new implementation is reviewed, update the workflow's Action SHA separately before using `version` there.
-Do not invent a new SHA or change to an unpinned branch as a shortcut.
+The repository's Release workflow uses `./release` after checking out `${{ github.sha }}`.
+This runs the Action from the same commit as the checkout, without a separate Action SHA update.
+It accepts the `version` input and defaults to `latest`, the latest stable published CLI.
+External Action dependencies remain pinned to full commit SHAs.
 
 On pushes to `main`, `auto` manages the version PR and publishes incomplete validated batches.
 Merge the version PR only after review; the following main push publishes its `v<version>` tag and GitHub Release.
