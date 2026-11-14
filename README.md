@@ -50,7 +50,6 @@ jobs:
       - uses: changenote/action@<full-action-commit-sha>
         with:
           base-branch: main
-          version: 'v0.13.0'
           push-git-tags: 'true'
           create-github-releases: 'true'
 ```

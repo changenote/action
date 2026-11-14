@@ -228,8 +228,6 @@ permissions:
   pull-requests: write
 steps:
   - uses: changenote/action@<full-action-commit-sha>
-    with:
-      version: 'v0.13.0'
 ```
 
 Registry plus GitHub publication; the caller must supply build dependencies and registry credentials or approved Trusted Publishing:
@@ -241,7 +239,6 @@ permissions:
 steps:
   - uses: changenote/action@<full-action-commit-sha>
     with:
-      version: 'v0.13.0'
       publish-script: bash scripts/publish.sh
       push-git-tags: 'true'
       create-github-releases: 'true'
@@ -256,7 +253,6 @@ permissions:
 steps:
   - uses: changenote/action@<full-action-commit-sha>
     with:
-      version: 'v0.13.0'
       publish-script: bash scripts/publish.sh
       release-script: bash scripts/release.sh
 ```
@@ -270,7 +266,6 @@ permissions:
 steps:
   - uses: changenote/action@<full-action-commit-sha>
     with:
-      version: 'v0.13.0'
       push-git-tags: 'true'
 ```
 
@@ -283,7 +278,6 @@ permissions:
 steps:
   - uses: changenote/action@<full-action-commit-sha>
     with:
-      version: 'v0.13.0'
       pr-draft: always
 ```
 

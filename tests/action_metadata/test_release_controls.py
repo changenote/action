@@ -76,10 +76,11 @@ class ReleaseControls(unittest.TestCase):
             self.assertEqual(job["permissions"], {"contents": "write", "pull-requests": "write"})
             step = job["steps"][0]
             self.assertEqual(step["uses"], "changenote/action@<full-action-commit-sha>")
-            self.assertLessEqual(set(step.get("with", {})), set(action["inputs"]))
-            self.assertNotIn("operation", step["with"])
-            if step["with"].get("create-github-releases") == "true":
-                self.assertEqual(step["with"]["push-git-tags"], "true")
+            supplied = step.get("with", {})
+            self.assertLessEqual(set(supplied), set(action["inputs"]))
+            self.assertNotIn("operation", supplied)
+            if supplied.get("create-github-releases") == "true":
+                self.assertEqual(supplied["push-git-tags"], "true")
 
 
 if __name__ == "__main__":

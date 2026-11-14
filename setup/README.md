@@ -17,8 +17,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: changenote/action/setup@<full-action-commit-sha>
-        with:
-          version: 'v0.13.0'
       - run: changenote --version
 ```
 

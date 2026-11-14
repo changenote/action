@@ -31,11 +31,9 @@ jobs:
       - uses: changenote/action/prepare@<full-action-commit-sha>
         with:
           base-branch: main
-          version: 'v0.13.0'
       - uses: changenote/action/manage-pr@<full-action-commit-sha>
         with:
           base-branch: main
-          version: 'v0.13.0'
 ```
 
 Run on `push` or `workflow_dispatch`, not contributor PR events.
