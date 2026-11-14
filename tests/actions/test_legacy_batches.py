@@ -4,7 +4,7 @@ import json
 import unittest
 
 import test_actions
-from test_preview import snapshot
+from test_inspect import snapshot
 
 
 class LegacyBatches(unittest.TestCase):
@@ -19,7 +19,7 @@ class LegacyBatches(unittest.TestCase):
         self.f.git("config", "maintenance.auto", "false")
         event = self.f.top / "event.json"
         event.write_text(json.dumps({"forced": False, "deleted": False}))
-        self.f.env.update(GITHUB_EVENT_NAME="push", GITHUB_EVENT_PATH=str(event))
+        self.f.env.update(GITHUB_EVENT_NAME="push", GITHUB_EVENT_PATH=str(event), INPUT_OPERATION="auto")
 
     def legacy_release(self, flat=False):
         f = self.f
@@ -57,7 +57,7 @@ class LegacyBatches(unittest.TestCase):
                 self.f.later_commit()
                 before = self.f.state(), snapshot(self.f.remote)
                 source = snapshot(self.f.repo)
-                _, out = self.f.action("preview")
+                _, out = self.f.action("inspect")
                 self.assertEqual(out["ready"], "true")
                 self.assertEqual(out["release-commit"], sha)
                 self.assertEqual(json.loads(out["publication-plan"])[0]["action"], "none")
@@ -77,11 +77,9 @@ class LegacyBatches(unittest.TestCase):
         self.assertEqual(out["publication-needed"], "false")
         self.assertEqual(out["ready"], "true")
         self.assertEqual(out["published"], "false")
-        self.f.env.update(GITHUB_EVENT_NAME="workflow_dispatch",
-                          INPUT_OPERATION="retry-publication")
-        _, out = self.f.action("release")
+        self.f.env.update(GITHUB_EVENT_NAME="workflow_dispatch", INPUT_EXPECTED_RELEASE_COMMIT=sha)
+        _, out = self.f.action("publish")
         self.assertEqual(out["release-commit"], sha)
-        self.assertEqual(out["ready"], "true")
         self.assertEqual(out["published"], "false")
         self.assert_no_remote_writes(before)
 
@@ -120,7 +118,7 @@ class LegacyBatches(unittest.TestCase):
                 if kind == "missing-release":
                     self.f.set_state(releases=[])
                 before = self.f.state(), snapshot(self.f.remote)
-                result, out = self.f.action("preview", ok=False)
+                result, out = self.f.action("inspect", ok=False)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("complete existing publication", result.stderr)
                 self.assertEqual(out["ready"], "false")
@@ -164,7 +162,7 @@ class LegacyBatches(unittest.TestCase):
                 self.f.git("push", "--force", "origin", "main")
                 self.complete_publication(sha)
                 before = self.f.state(), snapshot(self.f.remote)
-                result, out = self.f.action("preview", ok=False)
+                result, out = self.f.action("inspect", ok=False)
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn("parent release plan" if kind in {"notes", "field"}
                               else "generated release tree", result.stderr)
@@ -189,7 +187,7 @@ class LegacyBatches(unittest.TestCase):
             f.git("push", "origin", "refs/tags/" + tag)
         f.set_state(releases=[{"tag_name": tags[0], "draft": False}])
         before = f.state(), snapshot(f.remote)
-        result, out = f.action("preview", ok=False)
+        result, out = f.action("inspect", ok=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(out["ready"], "false")
         self.assertEqual([item["action"] for item in json.loads(out["publication-plan"])],
@@ -199,14 +197,14 @@ class LegacyBatches(unittest.TestCase):
         self.assertEqual(out["published"], "false")
         self.assert_no_remote_writes(before)
         f.set_state(releases=[{"tag_name": tag, "draft": False} for tag in tags])
-        _, out = f.action("preview")
+        _, out = f.action("inspect")
         self.assertEqual(out["ready"], "true")
 
     def test_api_errors_are_not_treated_as_complete_publication(self):
         sha = self.legacy_release()
         self.complete_publication(sha)
         self.f.set_state(releases_api_fail=True)
-        result, out = self.f.action("preview", ok=False)
+        result, out = self.f.action("inspect", ok=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("API unavailable", result.stderr)
         self.assertEqual(out["ready"], "false")

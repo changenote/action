@@ -116,7 +116,7 @@ class ReleaseEnvironment(unittest.TestCase):
         (self.fixture.repo / "package-lock.json").unlink()
         self.save()
         self.stub("npm")
-        self.fixture.env.update(INPUT_OPERATION="select")
+        self.fixture.env.update(INPUT_OPERATION="inspect")
         _, values = self.run_environment()
         self.assertEqual(values["npm"], "true")
         self.run_environment("warm")
@@ -173,9 +173,9 @@ class ReleaseEnvironment(unittest.TestCase):
         self.fixture.env.update(INPUT_OPERATION="publish", INPUT_EXPECTED_RELEASE_COMMIT="f" * 40)
         result, _ = self.run_environment("warm", ok=False)
         self.assertNotEqual(result.returncode, 0)
-        self.assertIn("changed after selection", result.stderr)
+        self.assertIn("changed after inspection", result.stderr)
         self.assertFalse(self.calls.exists())
-        self.fixture.env.update(INPUT_OPERATION="select", GITHUB_REF="refs/heads/other")
+        self.fixture.env.update(INPUT_OPERATION="inspect", GITHUB_REF="refs/heads/other")
         result, _ = self.run_environment("warm", ok=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertFalse(self.calls.exists())
@@ -225,7 +225,7 @@ class ReleaseEnvironment(unittest.TestCase):
         self.assertEqual([item["package"] for item in json.loads(
             (f.repo / ".changenote/releases.json").read_text())], ["pkg"])
         self.stub("npm", fail=True)
-        f.env["INPUT_OPERATION"] = "select"
+        f.env["INPUT_OPERATION"] = "inspect"
         _, tools = self.run_environment()
         self.assertEqual(tools["npm"], "false")
         self.run_environment("warm")

@@ -7,7 +7,7 @@ import tomllib
 import unittest
 
 import test_actions
-from test_preview import snapshot
+from test_inspect import snapshot
 
 
 class ReleaseIsolation(unittest.TestCase):
@@ -88,15 +88,15 @@ class ReleaseIsolation(unittest.TestCase):
         return result, values
 
     def preview(self, commit, version):
-        self.f.env["INPUT_OPERATION"] = "select"
-        _, out = self.readonly(lambda: self.f.action("release"))
+        self.f.env["INPUT_OPERATION"] = "inspect"
+        _, out = self.readonly(lambda: self.f.action("inspect"))
         self.assertEqual(out["ready"], "true")
         self.assertEqual(out["release-commit"], commit)
         self.assertEqual(json.loads(out["publication-plan"]), [{
             "name": "pkg", "version": version, "tag": f"v{version}",
             "action": "create-tag-and-release", "conflicts": [],
         }])
-        self.assertEqual(out["published"], "false")
+        self.assertEqual(out["publication-needed"], "true")
 
     def legacy_release(self, name):
         self.f.note(name=name)
@@ -139,12 +139,12 @@ class ReleaseIsolation(unittest.TestCase):
         self.assertEqual(self.f.git("show", f"{first}:Cargo.lock"),
                          self.f.git("show", f"{second}:Cargo.lock"))
         self.plain_current_config("1.0.2")
-        _, tools = self.environment("discover", "select")
+        _, tools = self.environment("discover", "inspect")
         self.assertEqual(tools["cargo"], "true")
-        self.environment("warm", "select")
+        self.environment("warm", "inspect")
         self.preview(second, "1.0.2")
 
-    def test_stable_selection_overrides_consumer_and_historical_rust_toolchains(self):
+    def test_root_and_caller_owned_toolchains_override_historical_files(self):
         self.require_tool("rustup")
         self.cargo_project()
         f = self.f
@@ -154,7 +154,7 @@ class ReleaseIsolation(unittest.TestCase):
         f.note()
         # No input selects stable. Warm and PR generation must both ignore the file.
         self.environment("warm", "manage-pr")
-        f.env["INPUT_OPERATION"] = "manage-pr"
+        f.env.update(INPUT_OPERATION="auto", GITHUB_EVENT_NAME="workflow_dispatch")
         _, out = f.action("release")
         self.assertEqual(out["pr-operation"], "created")
         f.git("fetch", "origin", test_actions.BRANCH)
@@ -170,7 +170,9 @@ class ReleaseIsolation(unittest.TestCase):
                     f.env.pop("INPUT_RUST_TOOLCHAIN", None)
                 else:
                     f.env["INPUT_RUST_TOOLCHAIN"] = selected
-                self.environment("warm", "select")
+                self.environment("warm", "inspect")
+                # Standalone inspection uses the caller environment, unlike root auto.
+                f.env["RUSTUP_TOOLCHAIN"] = selected or "stable"
                 # This synchronized release cannot pass with the legacy replay profile.
                 self.preview(release, "1.0.1")
 
@@ -199,7 +201,7 @@ class ReleaseIsolation(unittest.TestCase):
             self.assertEqual(manifest["project"]["version"], "1.0.1")
             self.assertEqual(lock["package"][0]["version"], "1.0.0")
             self.plain_current_config("1.0.2")
-            operation = "select"
+            operation = "inspect"
         else:
             f.note()
             operation = "manage-pr"
@@ -258,9 +260,9 @@ class ReleaseIsolation(unittest.TestCase):
         self.assertEqual(json.loads(f.git("show", f"{parent}:package.json"))["version"], "1.0.1")
         self.assertEqual(json.loads(f.git("show", f"{parent}:package-lock.json"))["version"], "1.0.0")
         self.plain_current_config("1.0.2")
-        _, tools = self.environment("discover", "select")
+        _, tools = self.environment("discover", "inspect")
         self.assertEqual(tools["npm"], "true")
-        self.environment("warm", "select")
+        self.environment("warm", "inspect")
         self.preview(release, "1.0.2")
         self.assertEqual(marker.read_text(), "unchanged\n")
 

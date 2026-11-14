@@ -1,63 +1,20 @@
 #!/usr/bin/env bash
-# Public high-level operations. Existing scripts own replay and remote writes.
+# Root workflow orchestration. Workers own their isolated Git state and writes.
 set -euo pipefail
-# shellcheck source=scripts/action/common.sh
-source "${BASH_SOURCE[0]%/*}/common.sh"
+# shellcheck source=scripts/action/inputs.sh
+source "${BASH_SOURCE[0]%/*}/inputs.sh"
 
-validate_inputs() {
-  [[ $(uname -s) == Linux ]] || fail 'Only Linux runners are supported.'
-  case ${GITHUB_EVENT_NAME:-} in
-    push|workflow_dispatch) ;;
-    *) fail 'Use the release Action on push or workflow_dispatch, not contributor PR events.' ;;
-  esac
-  operation=${INPUT_OPERATION:-auto}
-  case $operation in
-    auto)
-      if [[ $GITHUB_EVENT_NAME == workflow_dispatch ]]; then operation=manage-pr; fi
-      ;;
-    hooks|manage-pr|select|publish) ;;
-    retry-publication)
-      [[ $GITHUB_EVENT_NAME == workflow_dispatch ]] || fail 'retry-publication requires workflow_dispatch.'
-      ;;
-    *) fail 'operation must be hooks, auto, manage-pr, select, publish, or retry-publication.' ;;
-  esac
-  [[ ${INPUT_PREPARE:-true} == false || ${INPUT_PREPARE:-true} == true ]] || fail 'prepare must be true or false.'
-  if [[ $operation != hooks && ( ${INPUT_PUBLISH_SCRIPT:-} =~ [^[:space:]] || ${INPUT_RELEASE_SCRIPT:-} =~ [^[:space:]] ) ]]; then
-    fail 'Custom scripts require operation=hooks. Use separate Actions for external CI and built-in publication.'
-  fi
-  [[ ${INPUT_RETRY:-false} == false || ${INPUT_RETRY:-false} == true ]] || fail 'retry must be true or false.'
-  if [[ ${INPUT_RETRY:-false} == true ]]; then
-    [[ $operation == select && $GITHUB_EVENT_NAME == workflow_dispatch ]] || fail 'retry=true requires select on workflow_dispatch.'
-  fi
-  if [[ $operation == publish ]]; then
-    [[ ${INPUT_EXPECTED_RELEASE_COMMIT:-} =~ ^[0-9a-f]{40}$ ]] || fail 'publish requires expected-release-commit with a full lowercase commit SHA.'
-  else
-    [[ -z ${INPUT_EXPECTED_RELEASE_COMMIT:-} ]] || fail 'expected-release-commit is only valid with publish.'
-  fi
-  [[ -z ${INPUT_NPM_VERSION:-} || ${INPUT_NPM_VERSION:-} =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail 'npm-version must be an exact stable version.'
-  [[ ${INPUT_RUST_TOOLCHAIN:-stable} =~ ^[A-Za-z0-9._-]+$ ]] || fail 'Invalid rust-toolchain.'
-  if [[ $GITHUB_EVENT_NAME == push ]]; then
-    jq -e '.forced == false and .deleted == false' "${GITHUB_EVENT_PATH:?Event path is required}" >/dev/null || fail 'Forced or deleted pushes cannot run the release Action.'
-  fi
-}
-
-validate_inputs
+validate_root
 export RUSTUP_TOOLCHAIN=${INPUT_RUST_TOOLCHAIN:-stable}
 if [[ ${1:-run} == validate ]]; then
   output operation "$operation"
+  scope=auto
+  if [[ $GITHUB_EVENT_NAME == workflow_dispatch ]]; then scope=manage-pr; fi
+  output environment-operation "$scope"
   exit 0
 fi
-[[ ${1:-run} == run ]] || fail 'Unknown high-level Action entry point.'
+[[ ${1:-run} == run ]] || fail 'Unknown root Action entry point.'
 scripts=$(cd -- "${BASH_SOURCE[0]%/*}" && pwd)
-if [[ $operation == hooks ]]; then
-  output published false
-  output published-packages '[]'
-  output publication-plan '[]'
-  output publication-needed false
-  output ready false
-  exec bash "$scripts/lifecycle.sh"
-fi
-if [[ -n ${INPUT_GITHUB_TOKEN:-} ]]; then export GH_TOKEN=$INPUT_GITHUB_TOKEN; fi
 temp=$(mktemp -d)
 work=''
 trap cleanup EXIT
@@ -81,7 +38,7 @@ run_script() {
 
 value() {
   local file=$1 key=$2
-  # Each producer emits one-line JSON and scalar fields. Keep the last update.
+  # Producers can update a scalar or one-line JSON field; keep the last value.
   awk -v key="$key" 'index($0, key "=") == 1 { value = substr($0, length(key) + 2) } END { print value }' "$temp/$file.outputs"
 }
 
@@ -91,41 +48,38 @@ copy_outputs() {
   for key in "$@"; do output "$key" "$(value "$file" "$key")"; done
 }
 
-select_batch() {
-  run_script preview
-  copy_outputs preview ready publication-plan
-  selected=$(value preview release-commit)
-  local plan
-  plan=$(value preview publication-plan)
-  needed=$(jq -r 'any(.[]; .action != "none")' <<< "$plan")
-  output publication-needed "$needed"
-  if [[ -n $selected && ( $operation == select || $needed == true || ${INPUT_RETRY:-false} == true || $operation == retry-publication ) ]]; then
-    output release-commit "$selected"
-    output releases "$(value preview releases)"
-  else
-    selected=''
-  fi
-}
+# Routing must fail before PR writes. Keep caller GH_TOKEN unchanged for scripts.
+expected=''
+if [[ $operation == hooks ]]; then
+  run_script lifecycle route
+  expected=$(value lifecycle release-commit)
+fi
 
+management_token=${INPUT_GITHUB_TOKEN:-${GH_TOKEN:-}}
 pr_result=0
-if [[ $operation == auto || $operation == manage-pr ]]; then
-  if [[ $operation == auto && ${INPUT_PR_ENVIRONMENT_READY:-true} == false ]]; then
-    printf 'PR environment preparation failed; publication will still be attempted.\n' >&2
-    pr_result=1
-  else
-    run_script version || pr_result=$?
-    copy_outputs version has-notes pr-number pr-operation
-  fi
-  if [[ $operation == manage-pr ]]; then exit "$pr_result"; fi
-fi
-if [[ $operation == select || $operation == auto || $operation == retry-publication ]]; then
-  select_batch
-  if [[ $operation == select || -z $selected ]]; then exit "$pr_result"; fi
-  output ready false
-  run_script publish "$selected"
+if [[ $operation == auto && ${INPUT_PR_ENVIRONMENT_READY:-true} == false ]]; then
+  printf 'PR environment preparation failed; publication will still be attempted.\n' >&2
+  pr_result=1
 else
-  run_script publish "${INPUT_EXPECTED_RELEASE_COMMIT}"
+  GH_TOKEN=$management_token run_script version || pr_result=$?
+  copy_outputs version has-notes pr-number pr-operation
 fi
+
+if [[ $operation == hooks ]]; then
+  if [[ -n $expected ]]; then
+    run_script lifecycle run "$expected"
+    copy_outputs lifecycle release-commit releases
+  fi
+  exit "$pr_result"
+fi
+[[ $GITHUB_EVENT_NAME == push ]] || exit "$pr_result"
+GH_TOKEN=$management_token run_script inspect
+copy_outputs inspect ready publication-plan publication-needed
+selected=$(value inspect release-commit)
+if [[ -z $selected || $(value inspect publication-needed) != true ]]; then exit "$pr_result"; fi
+copy_outputs inspect release-commit releases
+output ready false
+GH_TOKEN=$management_token run_script publish "$selected"
 copy_outputs publish release-commit releases published published-packages
 output ready true
 exit "$pr_result"

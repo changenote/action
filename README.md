@@ -1,41 +1,30 @@
 # changenote Actions
 
-GitHub Actions for [changenote](https://github.com/changenote/changenote) release PRs, note checks, tags, and GitHub Releases.
+GitHub Actions for [changenote](https://github.com/changenote/changenote) note checks, release PRs, Git tags, and GitHub Releases.
 
-| Entry point | Purpose | CLI setup |
-| --- | --- | --- |
-| `changenote/action` | Complete workflow: managed-merge scripts or built-in release operations. | Installs or reuses the CLI; built-in operations prepare package-manager caches. |
-| `changenote/action/setup` | Install the CLI once and return its same-job path and exact version. | Installs the selected CLI. |
-| `changenote/action/prepare` | Prepare project tools and offline lockfile caches only. | Installs or reuses the CLI. |
-| `changenote/action/manage-pr` | Create, update, or close the managed Release PR only. | Installs or reuses the CLI. |
-| `changenote/action/select` | Return a verified batch and its separate GitHub publication state. | Installs or reuses the CLI. |
-| `changenote/action/release` | Compatibility entry point for built-in operations; defaults to `auto`. | Uses the root's shared implementation. |
-| `changenote/action/check` | Check contributor PR notes with read-only permissions. | Installs the selected CLI. |
-| `changenote/action/preview` | Inspect the latest validated publication batch without remote writes. | Installs the selected CLI. |
-| `changenote/action/publish` | Publish tags and GitHub Releases for a validated batch. | Installs the selected CLI. |
+| Entry point | Responsibility |
+| --- | --- |
+| `changenote/action` | Complete workflow: `hooks` (default) or `auto`. |
+| `changenote/action/setup` | Install the CLI and return its exact version and same-job path. |
+| `changenote/action/prepare` | Prepare project tools and offline lockfile caches, without PR or publication writes. |
+| `changenote/action/check` | Check contributor PR note coverage with read-only permissions. |
+| `changenote/action/manage-pr` | Generate version changes and create, update, or close the managed Release PR. |
+| `changenote/action/inspect` | Verify the latest committed batch and inspect GitHub publication state without writes. |
+| `changenote/action/publish` | Revalidate the batch and create missing tags and GitHub Releases. |
 
-All Actions accept `version`, the changenote CLI version to install from PyPI with uv.
-Operation Actions also accept a trusted `cli-path` returned by `/setup` in the same job, to avoid another installation.
-It defaults to `latest`, the latest stable published version. Use an exact version for repeatable runs:
+All Actions support Linux and accept `version`, the CLI version to install from PyPI with uv.
+Use `latest` or an exact stable version with a required `v` prefix, such as `v0.13.0`.
+Bare versions, ranges, Git revisions, and prereleases are rejected.
+Installation uses a prebuilt wheel outside the consumer checkout, with no Rust or source-build fallback.
+An Action SHA does not pin the CLI when `version` is `latest`.
 
-```yaml
-- uses: changenote/action@<full-action-commit-sha>
-  with:
-    operation: auto
-    version: 'v0.9.2'
-```
-
-Exact versions require the `v` prefix and must be published on PyPI.
-Bare versions, version ranges, Git revisions, and prereleases are rejected.
-Each Action sets up uv and installs a prebuilt CLI wheel outside the consumer checkout.
-CLI installation does not require Rust and does not fall back to a source build.
-The Action does not pin a CLI version; pinning the Action SHA alone does not pin `latest`.
-Use a PyPI version that supports your configuration; see [Published CLI compatibility](docs/development.md#published-cli-compatibility).
+To reuse the CLI, run `/setup` once and pass its trusted `cli-path` to later Actions in the same job.
+Use `/prepare` for project tools and caches. Its `operation` chooses an environment scope, not an operation to execute.
+Root `auto` includes preparation by default; set `prepare: 'false'` after caller-owned preparation.
 
 ## Release workflow
 
-Replace every placeholder with a reviewed full commit SHA before use.
-The Action SHA belongs to `changenote/action`, not the CLI repository.
+Replace placeholders with reviewed full commit SHAs from the correct repositories.
 
 ```yaml
 name: Release
@@ -58,29 +47,34 @@ jobs:
           persist-credentials: false
       - uses: changenote/action@<full-action-commit-sha>
         with:
-          operation: ${{ github.event_name == 'workflow_dispatch' && 'manage-pr' || 'auto' }}
+          operation: auto
 ```
 
-The root defaults to `operation: hooks` for compatibility: it manages PRs and runs optional verified post-merge scripts, with no built-in publication.
-This example explicitly selects `auto` on pushes; manual runs only manage the PR. Actions never approve or merge their PRs.
-Built-in publication creates tags and GitHub Releases, not registry uploads.
-The root Action runs project publication scripts only when explicitly configured for `hooks`.
-Use the single-purpose Actions to compose separate jobs or add external CI and approvals.
-`/select` and `/preview` always return a verified batch, including completed batches; use `publication-needed` to gate automatic GitHub work.
-See [CLI reuse and operation boundaries](docs/github-actions.md#root-operations-and-reusable-actions).
+On push, `auto` manages the Release PR and publishes incomplete validated batches.
+On manual events, it only manages the PR.
+The default `hooks` mode manages PRs and runs optional trusted scripts after a verified managed merge; it does not enable built-in publication.
+Actions never approve or merge their PRs.
+
+Built-in publication creates Git tags and GitHub Releases in the caller's repository, not registry uploads.
+Use separate Actions for external CI and deployment approvals.
+`/inspect` also returns completed batches; gate automatic GitHub work with `publication-needed`.
+For an explicit publication retry, inspect the latest batch and pass its commit to `/publish`.
+
+## Breaking API changes
+
+The former `release`, `select`, and `preview` paths are removed without aliases.
+Root accepts only `hooks` and `auto`; individual operations use the corresponding standalone Actions.
+See [Migration](docs/migration.md#composable-action-interfaces) before changing a production pin.
 
 ## Documentation
 
-- [GitHub Actions guide](docs/github-actions.md): setup, permissions, operations, project scripts, and external CI.
-- [Lower-level reference](docs/github-actions-reference.md): PR management, preview, and publication.
-- [PR note checks](docs/checks.md): read-only contributor checks.
-- [Example workflows](examples/github-actions/): release, project scripts, and external CI.
-- [Development](docs/development.md): CLI installation, independent Action releases, and local checks.
-- [Repository migration](docs/migration.md): publication order, new SHA selection, and verification limits.
+- [GitHub Actions guide](docs/github-actions.md): setup, permissions, scripts, and external CI.
+- [Standalone Action reference](docs/github-actions-reference.md): PR management, inspection, and publication.
+- [PR note checks](docs/checks.md): contributor checks.
+- [Example workflows](examples/github-actions/): complete and composed workflows.
+- [Development](docs/development.md): CLI compatibility, Action releases, and local checks.
+- [Migration](docs/migration.md): API changes, coordinated pin updates, and rollback.
 
-The CLI source and its crates.io and PyPI publication remain in [changenote/changenote](https://github.com/changenote/changenote).
-The Action has its own version in `VERSION`; its first planned release is `v0.0.1`.
-The `version` input selects the CLI independently of the Action's version.
-See [Action releases](docs/development.md#action-releases) for this repository's release workflow.
-
+The CLI source and registry publication remain in [changenote/changenote](https://github.com/changenote/changenote).
+The Action has its own independent version in `VERSION`; the `version` input selects the CLI.
 The project uses the [MIT license](LICENSE).

@@ -7,6 +7,7 @@ import shutil
 import unittest
 
 import test_actions
+from test_inspect import snapshot
 
 
 class CommandHooks(unittest.TestCase):
@@ -53,9 +54,9 @@ class CommandHooks(unittest.TestCase):
         self.f.env.update(
             GITHUB_EVENT_PATH=str(self.event), GITHUB_EVENT_NAME=event,
             GITHUB_REF="refs/heads/" + (self.f.env.get("INPUT_BASE_BRANCH") or self.f.state().get("default_branch", "main")), GITHUB_SHA=sha,
-            INPUT_PUBLISH_SCRIPT=publish, INPUT_RELEASE_SCRIPT=release,
+            INPUT_OPERATION="hooks", INPUT_PUBLISH_SCRIPT=publish, INPUT_RELEASE_SCRIPT=release,
         )
-        result, out = self.f.action("lifecycle", ok=ok)
+        result, out = self.f.action("release", ok=ok)
         self.assertEqual(list(Path(self.f.env["TMPDIR"]).iterdir()), [])
         self.assertNotIn("management-token", result.stdout + result.stderr + json.dumps(out))
         return result, out
@@ -191,7 +192,7 @@ class CommandHooks(unittest.TestCase):
         _, out = self.run_hooks('test ! -e CHANGELOG.md; echo publish >> "$CALLS"')
         self.assertEqual(out["release-commit"], sha)
         self.assertEqual(self.lines(), ["publish"])
-        result, _ = self.f.action("preview", ok=False)
+        result, _ = self.f.action("inspect", ok=False)
         self.assertNotEqual(result.returncode, 0)
 
     def test_pr_failure_does_not_suppress_valid_merged_batch(self):
@@ -205,6 +206,9 @@ class CommandHooks(unittest.TestCase):
 
     def test_invalid_authorization_and_unsafe_events_fail_before_commands(self):
         sha = self.merged()
+        self.f.note("Pending next PR", "next")
+        original_pulls = self.f.state()["pulls"]
+        original_remote = snapshot(self.f.remote)
         for event, fields in (
             ("pull_request", {}), ("pull_request_target", {}),
             ("push", {"forced": True}), ("push", {"deleted": True}),
@@ -214,6 +218,8 @@ class CommandHooks(unittest.TestCase):
                 result, _ = self.run_hooks('echo unexpected >> "$CALLS"', event=event,
                                             fields=fields, ok=False)
                 self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(self.f.state()["pulls"], original_pulls)
+                self.assertEqual(snapshot(self.f.remote), original_remote)
         self.f.set_state(commit_pulls={sha: [[]]})
         result, _ = self.run_hooks('echo unexpected >> "$CALLS"', ok=False)
         self.assertNotEqual(result.returncode, 0)
@@ -305,7 +311,7 @@ case "$*" in
     n=$(<"$FETCH_COUNT")
     n=$((n + 1))
     echo "$n" > "$FETCH_COUNT"
-    if [[ $n == 2 ]]; then
+    if [[ $n == 3 ]]; then
       "$REAL_GIT" --git-dir="$HOOK_REMOTE" update-ref refs/heads/main "$NEWER_COMMIT"
     fi
     ;;

@@ -54,7 +54,7 @@ class ConfigPolicies(unittest.TestCase):
         self.assertFalse((f.repo / "b/CHANGELOG.md").exists())
         self.assertIn("Linked version baseline: 2.4.9", f.state()["pulls"][-1]["body"])
         self.assertEqual(json.loads(f.git("show", release + ":.changenote/releases.json"))[0]["version"], "2.4.10")
-        f.action("preview")
+        f.action("inspect")
         _, result = f.action("publish")
         self.assertEqual(result["published"], "true")
 
@@ -72,7 +72,7 @@ class ConfigPolicies(unittest.TestCase):
         config["packages"]["c"] = {"path": "c", "version_file": "VERSION"}
         self.config(packages=config["packages"])
         f.git("push", "origin", "main")
-        _, preview = f.action("preview")
+        _, preview = f.action("inspect")
         self.assertEqual(len(json.loads(preview["publication-plan"])), 2)
         _, published = f.action("publish")
         self.assertEqual(len(json.loads(published["published-packages"])), 2)
@@ -104,7 +104,7 @@ class ConfigPolicies(unittest.TestCase):
         self.assertEqual((f.repo / ".changenote/newer.md").read_bytes(), newer)
         self.config(ignore=["pkg"])
         f.git("push", "origin", "main")
-        _, preview = f.action("preview")
+        _, preview = f.action("inspect")
         self.assertEqual(preview["ready"], "true")
         _, result = f.action("publish")
         self.assertEqual(result["published"], "true")
@@ -146,7 +146,7 @@ class ConfigPolicies(unittest.TestCase):
                 # Live settings cannot enable bodies for a historically disabled release.
                 self.config(changelog={"enabled": True})
                 f.git("push", "origin", "main")
-                for action in ("preview", "publish"):
+                for action in ("inspect", "publish"):
                     result, _ = f.action(action, ok=False)
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("disabled", result.stderr)
@@ -158,7 +158,7 @@ class ConfigPolicies(unittest.TestCase):
         f.release()
         self.config(changelog={"enabled": False})
         f.git("push", "origin", "main")
-        _, preview = f.action("preview")
+        _, preview = f.action("inspect")
         self.assertEqual(preview["ready"], "true")
         _, published = f.action("publish")
         self.assertEqual(published["published"], "true")
@@ -179,7 +179,7 @@ class ConfigPolicies(unittest.TestCase):
         f.git("push", "origin", "main")
         self.assertFalse(target.exists())
         for attempt in range(2):
-            _, preview = f.action("preview")
+            _, preview = f.action("inspect")
             self.assertEqual(preview["ready"], "true")
             self.assertEqual(preview["release-commit"], release)
             _, published = f.action("publish")
@@ -201,7 +201,7 @@ class ConfigPolicies(unittest.TestCase):
         self.assertEqual(outputs["passed"], "true")
         f.git("push", "origin", "main")
         f.release()
-        _, preview = f.action("preview")
+        _, preview = f.action("inspect")
         self.assertEqual(preview["ready"], "true")
         _, published = f.action("publish")
         self.assertEqual(published["published"], "true")

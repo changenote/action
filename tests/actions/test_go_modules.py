@@ -81,7 +81,7 @@ class GoModules(unittest.TestCase):
         self.assertEqual({entry["tag"] for entry in batch}, expected_tags)
         f.later_commit()
         before_tags = f.git("ls-remote", "--tags", "origin")
-        _, preview = f.action("preview")
+        _, preview = f.action("inspect")
         self.assertEqual(preview["ready"], "true")
         self.assertEqual(preview["release-commit"], release)
         self.assertEqual({entry["tag"] for entry in json.loads(preview["publication-plan"])}, expected_tags)

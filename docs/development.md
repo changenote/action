@@ -5,14 +5,12 @@ The CLI and its crates.io and PyPI publication remain in [changenote/changenote]
 
 ## Repository layout
 
-- `action.yml`: complete root workflow; defaults to compatible managed-merge scripts and also exposes built-in operations.
+- `action.yml`: root workflow orchestration; `hooks` (default) or `auto`.
 - `setup/action.yml`: CLI installation with same-job path and exact-version outputs.
 - `prepare/action.yml`: project tools and offline caches without PR or publication writes.
 - `manage-pr/action.yml`: release PR lifecycle only.
-- `select/action.yml`: verified batch identity and separate GitHub publication state.
-- `release/action.yml`: compatibility entry point for root's shared built-in operations.
+- `inspect/action.yml`: verified batch identity and read-only GitHub publication inspection.
 - `check/action.yml`: read-only PR note reports.
-- `preview/action.yml`: read-only publication inspection.
 - `publish/action.yml`: validated tag and GitHub Release publication.
 - `VERSION`: independent Action release version.
 - `.changenote/`: release configuration and pending notes for the `action` package.
@@ -45,7 +43,7 @@ CI runs the shared installer with `INPUT_VERSION=latest` before the integration 
 Tests use the installed executable on `PATH`, not an Action-local Cargo build or a sibling repository.
 
 The Actions set up uv and install a prebuilt wheel into a new runner temporary tool environment.
-Root, `/setup`, `/prepare`, and `/release` use `uv-version` for CLI installation and configured uv lockfiles.
+Root, `/setup`, and `/prepare` use `uv-version` for CLI installation and configured uv lockfiles.
 It sets up Rust with `rust-toolchain` only when configured Cargo lockfiles require it.
 The other Actions do not install Rust for the CLI.
 The installer runs outside the consumer checkout, removes GitHub token variables, and disables project configuration, source overrides, source builds, and prereleases.
@@ -67,7 +65,7 @@ Run from the repository root after installing changenote:
 for script in scripts/action/*.sh; do bash -n "$script"; done
 shellcheck -x scripts/action/*.sh
 actionlint
-zizmor --offline .github/
+zizmor --offline .github/ action.yml setup/action.yml prepare/action.yml check/action.yml manage-pr/action.yml inspect/action.yml publish/action.yml
 changenote status
 uv run --no-project python -m unittest discover -s tests/actions -v
 uv run --no-project --with pyyaml python -m unittest discover -s tests/action_metadata -v
@@ -106,9 +104,9 @@ External Action dependencies remain pinned to full commit SHAs.
 On pushes to `main`, `auto` manages the version PR and publishes incomplete validated batches.
 Merge the version PR only after review; the following main push publishes its `v<version>` tag and GitHub Release.
 The workflow never approves or merges its own PR.
-The `/release` Action does not run or wait for project CI; use PR review and branch rules before merging a version PR.
+The root Action does not run or wait for project CI; use PR review and branch rules before merging a version PR.
 It uploads no registry packages and creates no moving major-version aliases.
-Manual runs default to `manage-pr`; select `retry-publication` explicitly to finish an incomplete publication.
+Manual workflow choices call standalone `manage-pr`, or prepare and inspect the batch before standalone `publish` with an exact commit guard. These menu choices are not root operations.
 Runs are serialized and do not cancel a running release operation.
 
 Before enabling this workflow:
@@ -126,15 +124,20 @@ For an unexpected CLI change with `latest`, select an exact version in the calle
 
 ## Action composition verification
 
-Local composition validation passed 184 integration tests and 51 metadata tests with an isolated CLI 0.12.1 wheel.
+On 2026-11-14, local verification of the seven-entry refactor passed 188 integration tests and 55 metadata tests with published CLI `0.13.0`.
+Bash syntax, ShellCheck, actionlint 1.7.11, changenote status, local Markdown links, and offline zizmor checks passed.
+The security scan uses the explicit annotations described below; hosted behavior remains unverified.
+
+Historical composition validation passed 184 integration tests and 51 metadata tests with an isolated CLI 0.12.1 wheel.
 The fixtures isolate the hosted runner ref; both suites also pass when the parent environment contains a PR merge ref.
 [Hosted composition CI](https://github.com/changenote/action/actions/runs/43580500104) subsequently passed both suites with published PyPI CLI `0.13.0`.
 The production installer remains wheel-only and has no source-build fallback.
 
-The nine public Action definitions pass offline zizmor checks.
+Audit the seven public Action definitions and repository workflows with offline zizmor.
 Exact npm tool installation has a per-step annotation because it intentionally installs the caller's validated tool version without a project lockfile; lifecycle scripts are disabled.
-The existing workflow-level Dependabot cooldown and self-repository syntax advisories also occur on the unchanged baseline.
-They are not silently treated as a clean workflow security scan.
+Dependabot uses a seven-day cooldown.
+Repository-local Action calls have explicit self-repository audit annotations: the workflow checks out the exact event SHA with no persisted credentials, and required actionlint does not support the suggested `$/` syntax.
+Contract tests check that these local calls use the reviewed checkout and do not run preparation commands from an untrusted download. These annotations do not waive other security checks.
 
 The example repository has a pinned root workflow and inactive composition templates.
 Production pin updates still require a reviewed, published Action SHA.

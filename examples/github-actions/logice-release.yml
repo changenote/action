@@ -16,12 +16,12 @@ env:
   CHANGENOTE_NODE_VERSION: '26.11.1'
   CHANGENOTE_NPM_VERSION: '11.20.0'
 jobs:
-  select:
+  inspect:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.operation == 'retry-publication')
     runs-on: ubuntu-latest
     outputs:
-      release-commit: ${{ steps.select.outputs.release-commit }}
-      publication-needed: ${{ steps.select.outputs.publication-needed }}
+      release-commit: ${{ steps.inspect.outputs.release-commit }}
+      publication-needed: ${{ steps.inspect.outputs.publication-needed }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -33,23 +33,23 @@ jobs:
       - uses: changenote/action/prepare@<full-action-commit-sha>
         with:
           cli-path: ${{ steps.cli.outputs.cli-path }}
-          operation: select
+          operation: inspect
           node-version: ${{ env.CHANGENOTE_NODE_VERSION }}
           npm-version: ${{ env.CHANGENOTE_NPM_VERSION }}
-      - uses: changenote/action/select@<full-action-commit-sha>
-        id: select
+      - uses: changenote/action/inspect@<full-action-commit-sha>
+        id: inspect
         with:
           cli-path: ${{ steps.cli.outputs.cli-path }}
 
   validate:
-    needs: select
-    if: needs.select.outputs.release-commit != '' && (needs.select.outputs.publication-needed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'retry-publication'))
+    needs: inspect
+    if: needs.inspect.outputs.release-commit != '' && (needs.inspect.outputs.publication-needed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'retry-publication'))
     permissions:
       contents: read
       actions: read
     uses: ./.github/workflows/ci.yml
     with:
-      revision: ${{ needs.select.outputs.release-commit }}
+      revision: ${{ needs.inspect.outputs.release-commit }}
 
   release:
     if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || inputs.operation == 'manage-pr')
@@ -81,8 +81,8 @@ jobs:
           pr-title: 'chore(release): version Logice'
 
   publish:
-    needs: [select, validate]
-    if: ${{ !cancelled() && needs.validate.result == 'success' && needs.select.outputs.release-commit != '' }}
+    needs: [inspect, validate]
+    if: ${{ !cancelled() && needs.validate.result == 'success' && needs.inspect.outputs.release-commit != '' }}
     concurrency:
       group: changenote-publication-main
       cancel-in-progress: false
@@ -96,7 +96,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.select.outputs.release-commit }}
+          ref: ${{ needs.inspect.outputs.release-commit }}
           persist-credentials: false
       - uses: changenote/action/setup@<full-action-commit-sha>
         id: cli
@@ -106,14 +106,14 @@ jobs:
         with:
           cli-path: ${{ steps.cli.outputs.cli-path }}
           operation: publish
-          expected-release-commit: ${{ needs.select.outputs.release-commit }}
+          expected-release-commit: ${{ needs.inspect.outputs.release-commit }}
           node-version: ${{ env.CHANGENOTE_NODE_VERSION }}
           npm-version: ${{ env.CHANGENOTE_NPM_VERSION }}
       - uses: changenote/action/publish@<full-action-commit-sha>
         id: publish
         with:
           cli-path: ${{ steps.cli.outputs.cli-path }}
-          expected-release-commit: ${{ needs.select.outputs.release-commit }}
+          expected-release-commit: ${{ needs.inspect.outputs.release-commit }}
 
   docker:
     needs: publish

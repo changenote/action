@@ -1,4 +1,4 @@
-"""Read-only publication preview tests; run on Linux with the real Rust CLI."""
+"""Read-only publication inspection with an installed trusted CLI."""
 
 import json
 import os
@@ -19,7 +19,7 @@ def snapshot(root):
     }
 
 
-class Preview(unittest.TestCase):
+class Inspect(unittest.TestCase):
     def setUp(self):
         self.f = test_actions.Actions("test_no_batch")
         self.f.setUp()
@@ -27,10 +27,10 @@ class Preview(unittest.TestCase):
         # Prevent unrelated background Git maintenance from changing snapshots.
         self.f.git("config", "gc.auto", "0")
         self.f.git("config", "maintenance.auto", "false")
-        self.f.env["TMPDIR"] = str(self.f.top / "preview-temp")
+        self.f.env["TMPDIR"] = str(self.f.top / "inspect-temp")
         Path(self.f.env["TMPDIR"]).mkdir()
 
-    def preview(self, ok=True):
+    def inspect(self, ok=True):
         f = self.f
         before = snapshot(f.repo)
         remote_before = snapshot(f.remote)
@@ -39,12 +39,12 @@ class Preview(unittest.TestCase):
         audit = f.top / "git-audit"
         wrapper = f.bin / "git"
         wrapper.write_text(
-            '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$PREVIEW_GIT_AUDIT"\nfor arg in "$@"; do\n  case "$arg" in tag|push|commit|update-ref) echo "Forbidden preview write: $arg" >&2; exit 90;; esac\ndone\nexec "$PREVIEW_REAL_GIT" "$@"\n'
+            '#!/usr/bin/env bash\nprintf "%s\\n" "$*" >> "$INSPECT_GIT_AUDIT"\nfor arg in "$@"; do\n  case "$arg" in tag|push|commit|update-ref) echo "Forbidden inspect write: $arg" >&2; exit 90;; esac\ndone\nexec "$INSPECT_REAL_GIT" "$@"\n'
         )
         wrapper.chmod(0o755)
-        f.env.update(PREVIEW_REAL_GIT=real_git, PREVIEW_GIT_AUDIT=str(audit))
+        f.env.update(INSPECT_REAL_GIT=real_git, INSPECT_GIT_AUDIT=str(audit))
         try:
-            result, outputs = f.action("preview", ok=ok)
+            result, outputs = f.action("inspect", ok=ok)
         finally:
             wrapper.unlink()
         self.assertEqual(snapshot(f.repo), before)
@@ -63,16 +63,28 @@ class Preview(unittest.TestCase):
 
     def test_no_batch_and_dirty_source_are_unchanged(self):
         (self.f.repo / "untracked").write_text("keep")
-        _, out = self.preview()
+        _, out = self.inspect()
         self.assertEqual(
             out, {"ready": "true", "release-commit": "", "publication-plan": "[]",
                   "publication-needed": "false", "releases": "[]"}
         )
 
+    def test_dirty_stale_source_still_selects_the_remote_batch(self):
+        sha = self.f.release()
+        self.f.later_commit()
+        self.f.git("reset", "--hard", sha + "^")
+        (self.f.repo / "VERSION").write_text("dirty source\n")
+        (self.f.repo / "untracked").write_text("keep")
+        self.f.set_state(no_write=True, omit_permissions=True)
+        _, out = self.inspect()
+        self.assertEqual(out["release-commit"], sha)
+        self.assertEqual(out["publication-needed"], "true")
+        self.assertEqual(out["ready"], "true")
+
     def test_current_after_later_commit(self):
         sha = self.f.release()
         self.f.later_commit()
-        _, out = self.preview()
+        _, out = self.inspect()
         self.assertEqual(out["ready"], "true")
         self.assertEqual(out["release-commit"], sha)
         self.assertEqual(json.loads(out["publication-plan"]), [{
@@ -82,7 +94,7 @@ class Preview(unittest.TestCase):
 
     def test_unpublished_old_batch_is_unsupported(self):
         self.f.legacy_release()
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("complete existing publication", result.stderr)
         self.assertEqual(out["ready"], "false")
 
@@ -90,20 +102,20 @@ class Preview(unittest.TestCase):
         sha = self.f.release()
         self.f.git("tag", "v1.0.1", sha)
         self.f.git("push", "origin", "refs/tags/v1.0.1")
-        _, out = self.preview()
+        _, out = self.inspect()
         self.assertEqual(
             json.loads(out["publication-plan"])[0]["action"], "create-release"
         )
         self.f.set_state(
             releases=[{"tag_name": "v1.0.1", "draft": False, "body": "keep"}]
         )
-        _, out = self.preview()
+        _, out = self.inspect()
         self.assertEqual(json.loads(out["publication-plan"])[0]["action"], "none")
 
     def test_conflicts_are_reported_not_published(self):
         sha = self.f.release()
         self.f.set_state(releases=[{"tag_name": "v1.0.1", "draft": False}])
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(out["ready"], "false")
         self.assertIn(
@@ -112,7 +124,7 @@ class Preview(unittest.TestCase):
         self.f.git("tag", "v1.0.1", sha + "^")
         self.f.git("push", "origin", "refs/tags/v1.0.1")
         self.f.set_state(releases=[{"tag_name": "v1.0.1", "draft": True}])
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(len(json.loads(out["publication-plan"])[0]["conflicts"]), 2)
 
@@ -153,7 +165,7 @@ class Preview(unittest.TestCase):
         path.write_text(json.dumps(config))
         self.f.commit("remove group later")
         self.f.git("push", "origin", "main")
-        _, out = self.preview()
+        _, out = self.inspect()
         self.assertEqual(out["release-commit"], sha)
         self.assertEqual(
             [p["action"] for p in json.loads(out["publication-plan"])],
@@ -173,7 +185,7 @@ class Preview(unittest.TestCase):
         sha = self.fixed_release()
         self.f.git("tag", "changenote/pkg@v2.0.1", sha + "^")
         self.f.git("push", "origin", "refs/tags/changenote/pkg@v2.0.1")
-        _, out = self.preview(ok=False)
+        _, out = self.inspect(ok=False)
         self.assertEqual(
             [p["action"] for p in json.loads(out["publication-plan"])],
             ["conflict", "create-tag-and-release"],
@@ -185,7 +197,7 @@ class Preview(unittest.TestCase):
         self.f.git("add", "--", "b/CHANGELOG.md")
         self.f.git("commit", "--amend", "--no-edit")
         self.f.git("push", "--force", "origin", "main")
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn(
             "generated release tree", result.stderr
         )
@@ -200,31 +212,31 @@ class Preview(unittest.TestCase):
         self.f.git("add", "--", "CHANGELOG.md")
         self.f.git("commit", "--amend", "--no-edit")
         self.f.git("push", "--force", "origin", "main")
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("generated release tree", result.stderr)
         self.assertEqual(out["ready"], "false")
 
     def test_api_and_fetch_failures_do_not_claim_readiness(self):
         self.f.set_state(api_fail=True)
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("API unavailable", result.stderr)
         self.assertEqual(out["ready"], "false")
         self.f.set_state(api_fail=False, remote=str(self.f.top / "absent.git"))
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(out["ready"], "false")
 
     def test_release_api_failure_and_invalid_response_do_not_look_absent(self):
         self.f.release()
         self.f.set_state(releases_api_fail=True)
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("Release API unavailable", result.stderr)
         self.assertEqual(out["ready"], "false")
         self.assertEqual(out["publication-plan"], "[]")
         self.f.set_state(
             releases_api_fail=False, releases=[{"tag_name": "v1.0.1", "draft": "false"}]
         )
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("Invalid GitHub release response", result.stderr)
         self.assertEqual(out["ready"], "false")
         self.assertEqual(out["publication-plan"], "[]")
@@ -234,9 +246,9 @@ class Preview(unittest.TestCase):
         (self.f.bin / "changenote").unlink()
         for tool in ("bash", "uname", "jq"):
             (self.f.bin / tool).symlink_to(shutil.which(tool))
-        # preview() supplies an audited git wrapper, but no changenote is available.
+        # inspect() supplies an audited git wrapper, but no changenote is available.
         self.f.env["PATH"] = str(self.f.bin)
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("Missing prerequisite: changenote", result.stderr)
         self.assertEqual(out["ready"], "false")
         self.f.env["PATH"] = original
@@ -245,7 +257,7 @@ class Preview(unittest.TestCase):
             test_actions.CLI,
             self.f.bin / "changenote",
         )
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("Invalid base branch", result.stderr)
         self.assertEqual(out["ready"], "false")
 
@@ -256,13 +268,13 @@ class Preview(unittest.TestCase):
             batch.write_text(text)
             self.f.commit("invalid batch")
             self.f.git("push", "origin", "main")
-            result, out = self.preview(ok=False)
+            result, out = self.inspect(ok=False)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(out["ready"], "false")
         batch.unlink()
         self.f.commit("delete batch")
         self.f.git("push", "origin", "main")
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("Release batch was removed", result.stderr)
         self.assertEqual(out["ready"], "false")
         batch.write_text("[]")
@@ -271,7 +283,7 @@ class Preview(unittest.TestCase):
         root = self.f.git("commit-tree", tree, "-m", "root batch")
         self.f.git("reset", "--hard", root)
         self.f.git("push", "--force", "origin", "main")
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("root commit", result.stderr)
         self.assertEqual(out["ready"], "false")
 
@@ -285,7 +297,7 @@ class Preview(unittest.TestCase):
         self.f.cli("version")
         self.f.commit("release")
         self.f.git("push", "origin", "main")
-        result, out = self.preview(ok=False)
+        result, out = self.inspect(ok=False)
         self.assertIn("cannot be symlinks", result.stderr)
         self.assertEqual(out["ready"], "false")
 

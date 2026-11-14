@@ -18,41 +18,38 @@ For the repository move and production cutover, see [Migration](migration.md).
 
 ## Root operations and reusable Actions
 
-Use `changenote/action` for the complete configurable workflow.
-Its default `operation: hooks` preserves the existing managed-merge script flow and does not enable built-in publication.
-Set `operation: auto` explicitly for automatic PR management and built-in GitHub publication.
-Both use the same verified batch implementation.
-The `/release` path is a compatibility entry point for the built-in operations, with its existing `auto` default.
+Use the root for a complete workflow, or compose single-purpose Actions for separate jobs, permissions, external CI, and approvals.
+The root accepts only `hooks` and `auto`. Its default remains `hooks`, with no built-in publication.
+Set `operation: auto` explicitly for PR management and built-in GitHub publication on push.
+Both modes only manage the PR on manual events.
 
 | Entry point | Responsibility |
 | --- | --- |
-| Root | Select and configure the complete workflow. |
+| Root | Event policy, PR orchestration, follow-up work, and error handling. |
 | `/setup` | Install the CLI and return its exact `version` and same-job `cli-path`. |
 | `/prepare` | Prepare project tools and offline caches; create no PRs, tags, or Releases. |
-| `/manage-pr` | Create, update, or close the managed Release PR. |
-| `/select` | Return the latest verified batch and its GitHub publication state. |
-| `/check` | Check contributor notes without writes. |
-| `/publish` | Publish tags and GitHub Releases for a verified batch. |
-| `/preview` | Compatibility name for the same inspection as `/select`. |
-| `/release` | Compatibility entry point for root's built-in operations. |
+| `/manage-pr` | Generate version changes and manage the Release PR, without merging or publishing. |
+| `/check` | Check contributor PR note coverage without writes. |
+| `/inspect` | Verify the latest committed batch and inspect GitHub publication state without writes. |
+| `/publish` | Revalidate the batch and create Git tags and GitHub Releases, not registry uploads. |
 
-Each operation can install its CLI for standalone use.
-To reuse one installation, run `/setup` once and pass its `cli-path` to subsequent Actions in the same job.
-The path must be trusted, absolute, executable, and named `changenote`; never take it from contributor data.
+Each standalone operation can install its CLI.
+To reuse one installation, run `/setup` once and pass its trusted `cli-path` to subsequent Actions in the same job.
+The path must be absolute, executable, and named `changenote`; never take it from contributor data.
 An exact `version` must match that executable.
-With `version: latest` and an explicit path, the Action validates the existing stable version without resolving PyPI again.
-Paths do not transfer between jobs.
-Use the same exact version in separate jobs.
+With `version: latest` and an explicit path, the installed stable version is validated without resolving PyPI again.
+Paths do not transfer between jobs. Use the same exact CLI and project tool versions across jobs.
 
-`/prepare` uses `operation` only to choose the environment scope: `manage-pr` for pending notes, `select` or `publish` for the saved batch, and `auto` for both.
-A `publish` scope also requires `expected-release-commit`.
-The root and `/release` prepare tools for built-in operations by default.
-Set `prepare: 'false'` after caller-owned preparation, including a previous `/prepare` step.
-The root's `hooks` operation retains caller-owned project setup.
+`/prepare` uses `operation` only as an environment scope: `manage-pr` for pending notes, `inspect` or `publish` for the saved batch, and `auto` for both.
+The `publish` scope requires `expected-release-commit`; other scopes reject that guard.
+Preparation does not execute the named release operation.
+Root's `auto` prepares tools by default; on manual events it prepares only pending PR work.
+Set root `prepare: 'false'` after caller-owned preparation, including a previous `/prepare` step.
+Root's `hooks` retains caller-owned project setup.
 
-Custom `publish-script` and `release-script` inputs require `operation: hooks`.
-Other operations reject nonempty script inputs instead of ignoring them.
-Use separate single-purpose Actions for external CI, artifacts, and deployment approvals.
+Custom `publish-script` and `release-script` inputs require `hooks`.
+Use standalone Actions for individual operations and publication retries.
+For removed interfaces and coordinated pin updates, see [Migration](migration.md#composable-action-interfaces).
 
 ## Root Action: post-merge commands
 
@@ -99,7 +96,7 @@ It does not switch silently to another release commit.
 This check does not reserve the branch against a later merge.
 GitHub tag/Release state does not decide whether commands run. Changelog output can be disabled.
 Historical note-bearing batches remain read-only; custom commands are rejected for them.
-The stricter [legacy, changelog-body, and remote-publication rules](github-actions-reference.md#publication-workflow) of `/preview` and `/publish` remain unchanged.
+The stricter [legacy, changelog-body, and remote-publication rules](github-actions-reference.md#publication-workflow) of `/inspect` and `/publish` remain unchanged.
 
 Commands run once per batch per eligible invocation in a disposable worktree at the verified release commit.
 They share generated files between commands and have an `origin` remote without stored management credentials.
@@ -154,7 +151,7 @@ Do not use the root on contributor PRs. Use `/check` for read-only note checks.
 Standalone operation Actions install the CLI unless a trusted `cli-path` is supplied. Separate caller installation is not required.
 Use the `version` input when an exact CLI version is required; otherwise each invocation resolves `latest`.
 Both commands are opt-in; upgrading without command inputs does not enable package or GitHub publication.
-Consumers using `/release` retain its existing built-in publication and historical-recovery behavior.
+Consumers of removed entry points must migrate their workflow and Action SHA together; see [Migration](migration.md#composable-action-interfaces).
 No consumer or production workflow is migrated by these examples.
 
 ### Hosted handoff and recovery
@@ -175,12 +172,9 @@ Yanks and asset removal require separate maintainer authorization.
 
 ## Config-driven GitHub publication
 
-Use `changenote/action@<full-action-commit-sha>` with `operation: auto` to install the CLI and run built-in releases.
-The `/release` compatibility entry point uses the same implementation and defaults to `auto`.
+Use the root with `operation: auto` for PR management and built-in GitHub publication.
 Keep package settings in `.changenote/config.json`. Select workflow behavior and tool versions with Action inputs.
-
-Root's built-in operations prepare project package-manager caches and provide GitHub publication.
-Use `/setup`, `/prepare`, `/manage-pr`, `/select`, and `/publish` when the caller composes separate stages.
+Use `/setup`, `/prepare`, `/manage-pr`, `/inspect`, and `/publish` for separate stages.
 
 ## Minimal workflow
 
@@ -194,8 +188,8 @@ It does not require a new batch in the current push or an associated merged mana
 It does not run project CI.
 Use the separate operations below when CI must validate the exact release commit before publication.
 
-Manual runs default to `manage-pr`, which cannot publish.
-Select `retry-publication` explicitly to retry the latest validated batch without managing the PR.
+The workflow menu defaults to `manage-pr` and calls the standalone PR Action after preparation.
+Its `retry-publication` choice prepares and inspects the latest batch, then calls standalone `publish` with the inspected commit. These are workflow choices, not root operations.
 The Action never merges its PR.
 
 Before use:
@@ -220,11 +214,11 @@ The CLI reads local first-parent note history, follows actual renames, and inclu
 A `Sources:` paragraph precedes each note summary; verified Markdown PR links in the summary remain unchanged.
 These commits identify note edits, not necessarily the complete implementation. PR lookup is not automatic.
 
-Use the same exact compatible CLI version for PR generation, preview, and publication.
+Use the same exact compatible CLI version for PR generation, inspection, and publication.
 The Action prepares complete base-branch history; source-enabled versioning rejects uncommitted notes or unprovable history before writes.
 Historical replay uses the selected release parent's configuration and history, even after the live URL or checkout remote changes.
 Complete-tree verification is unchanged. GitHub Release bodies come from the verified changelog without another source lookup.
-With changelog output disabled, PR details can show links, but preview and publication remain unsupported before remote writes.
+With changelog output disabled, PR details can show links, but inspection and publication remain unsupported before remote writes.
 See the CLI [source-link rules](https://github.com/changenote/changenote/blob/main/docs/notes.md#automatic-commit-source-links) and [rollout limits](development.md#source-link-rollout).
 
 ## Tool setup
@@ -238,7 +232,7 @@ The Action verifies the installed version before adding it to `PATH`; it never f
 Installation runs in a new runner temporary directory, not the consumer checkout.
 uv uses an isolated tool environment with project configuration, source overrides, and source builds disabled.
 GitHub token variables are removed from installation.
-The `uv-version` input selects uv for root, `/setup`, `/prepare`, and `/release` installation and supported project uv lockfiles.
+The `uv-version` input selects uv for root, `/setup`, and `/prepare` installation and supported project uv lockfiles.
 The `rust-toolchain` input is only used when configured Cargo lockfiles require Rust.
 There is no Action-managed executable cache; `latest` is resolved again for each invocation.
 Installation needs access to uv distribution servers and PyPI, and a compatible wheel must exist.
@@ -279,67 +273,65 @@ The existing restrictions on unsupported lockfiles and dynamic manifest versions
 
 ## Operations and inputs
 
-| `operation` | Behavior | Token permissions |
+| Root `operation` | Behavior | Token permissions |
 | --- | --- | --- |
-| `hooks` (root default) | Manage the PR and run optional scripts only for a verified managed merge in the triggering push. Manual runs only manage the PR. | Contents write, pull requests write |
-| `auto` (`/release` default) | On push, manage the PR and publish pending validated work. On manual events, manage the PR only. | Contents write, pull requests write |
-| `manage-pr` | Create, update, or close the managed Release PR. | Contents write, pull requests write |
-| `select` | Inspect and return the latest verified batch without Git or GitHub writes, including completed batches. | Contents read |
-| `publish` | Publish only the exact commit passed through `expected-release-commit`. | Contents write |
-| `retry-publication` | On a manual event, publish the latest validated batch, including an already completed batch. | Contents write |
+| `hooks` (default) | Manage the PR and run optional scripts for a verified managed merge in the triggering push. Manual runs only manage the PR. | Contents write, pull requests write |
+| `auto` | On push, manage the PR and publish incomplete validated work. Manual runs only manage the PR. | Contents write, pull requests write |
 
-`auto` still attempts historical publication if current-plan preparation or PR management fails, then reports the PR error.
-CLI installation, tool installation, and historical-environment failures stop the Action.
+Root owns PR execution once per run and the final PR failure status.
+Invalid hook routing stops before PR writes.
+A PR-management failure does not suppress eligible verified follow-up work; the run still reports the PR error.
+In `auto`, current-plan preparation failure does not suppress historical publication.
+CLI installation, required tool installation, and historical-environment failures stop the Action.
 Use separate jobs if downstream work must be independent of PR-management failure.
-All publication paths reuse full-tree replay, changelog validation, conflict detection, and remote race checks.
-They create Git tags and GitHub Releases, not registry artifacts.
 
 | Input | Default | Rule |
 | --- | --- | --- |
-| `version` | `latest` | CLI version from PyPI; latest stable or an exact stable version with a required `v` prefix. |
-| `github-token` | `github.token` | Use the permissions required by the operation. |
-| `base-branch` | Repository default branch | The triggering ref must be this branch. |
-| `expected-release-commit` | Empty | Required for `publish`; full lowercase 40-character commit SHA. Rejected for other operations. |
-| `cli-path` | Empty | Reuse the trusted CLI returned by `/setup` in this job; an empty value installs `version`. |
-| `prepare` | `true` | Prepare tools for built-in operations; set `false` after caller-owned preparation. |
-| `retry` | `false` | Compatibility input for manual `select`; completed batches are now always returned. The standalone `/select` needs no retry input. |
-| `node-version` | `lts/*` | Used when a configured npm lockfile needs preparation. |
-| `npm-version` | Bundled npm | Optional exact stable version, such as `11.20.0`. |
-| `rust-toolchain` | `stable` | Used only for configured Cargo lockfile work. |
-| `uv-version` | setup-uv default | Used for CLI installation and configured uv lockfile preparation. |
-| `commit-message` | `chore(release): version packages` | Release commit message. |
+| `version` | `latest` | Stable PyPI CLI version; exact versions require a `v` prefix. |
+| `github-token` | `github.token` | Contents and pull requests write for root and PR management. Inspection needs only contents read; publication needs contents write. |
+| `base-branch` | Repository default branch | Root and preparation must run on this branch. |
+| `cli-path` | Empty | Reuse the trusted same-job executable returned by `/setup`; otherwise install `version`. |
+| `prepare` | `true` | Root prepares project tools for `auto`; set `false` after caller-owned preparation. |
+| `node-version` | `lts/*` | Node.js for configured npm lockfiles. |
+| `npm-version` | Bundled npm | Optional exact stable npm version. |
+| `rust-toolchain` | `stable` | Toolchain for configured Cargo lockfiles. |
+| `uv-version` | setup-uv default | uv for CLI installation and configured uv lockfiles. |
+| `commit-message` | `chore(release): version packages` | Generated release commit message. |
 | `pr-title` | `chore(release): version packages` | Managed PR title. |
+| `publish-script`, `release-script` | Empty | Trusted Bash scripts, only for root `hooks`. |
 
-The `/release` Action has no shell-command inputs or CI hooks; the root Action's command inputs do not change this interface.
-The caller retains control of project builds, CI, registry publication, and deployment.
+Standalone `publish` accepts optional `expected-release-commit`, a full lowercase 40-character SHA.
+Use it after external CI to prevent a changed release target from being published.
+Omitting it retains latest-batch publication.
+The guarded `publish` preparation scope requires the same input.
+Root accepts neither this guard nor a retry flag.
+All publication paths repeat full-tree replay, changelog validation, conflict detection, and remote race checks.
 
 ## Outputs
 
-Read outputs only after a successful Action step.
+Read outputs only after a successful Action step, except documented failure reports from `check` and `inspect`.
 
-- `release-commit`: selected or published verified commit.
-  - Empty when no work is selected.
-  - `select` always returns a verified batch, including completed batches.
-  - Gate automatic GitHub work with `publication-needed`, not commit presence. Registry work has its own completion state.
-  - `auto` retains its pending-only execution policy; this output change does not enable repeated publication.
-- `releases`: compact JSON for every package in the selected batch, including retries:
+- `release-commit`: the selected verified commit, or empty.
+  - `inspect` returns completed batches as well as incomplete batches.
+  - Root `auto` returns pending publication work only; manual runs return no batch.
+  - Root `hooks` returns the verified managed merge independently of configured scripts.
+- `releases`: compact JSON for every package in the batch:
 
   ```json
   [{"package":"logice","version":"1.2.3","tag":"v1.2.3"}]
   ```
 
-- `published`: whether this run created any remote tag or GitHub Release.
+- `published`: whether this run created a remote tag or GitHub Release.
 - `published-packages`: only packages changed remotely during this run.
-- `publication-plan`: the inspected remote plan for `select`, `auto`, or `retry-publication`.
-- `publication-needed`: whether inspection found incomplete GitHub publication work.
-- `ready`: whether inspection or publication completed without conflicts.
-  - This is not a CI result or authorization for other publishing systems.
-  - PR management alone does not set it to true.
+- `publication-plan`: inspected GitHub publication work, from `inspect` or root `auto` on push.
+- `publication-needed`: whether GitHub publication is incomplete. Gate automatic work with this value, not commit presence. Registry work has separate completion state.
+- `ready`: whether inspection or publication completed without conflicts. It is not a CI result or authorization for another publishing system.
 - `has-notes`, `pr-number`, `pr-operation`: PR-management results.
 
-The lower-level `preview` and `publish` Actions also expose `releases`.
-The lower-level `publish` Action accepts an optional `expected-release-commit`.
-Omission retains its latest-batch behavior.
+Root retains all these output names.
+In `hooks`, `published` and `ready` remain false because trusted scripts do not inspect GitHub publication state.
+PR management alone does not set `ready` to true.
+Standalone `publish` returns `release-commit`, `releases`, `published`, and `published-packages`.
 
 ## External CI and artifacts: Logice example
 
@@ -363,7 +355,7 @@ Its single package configuration needs no new fields:
 
 The workflow keeps these boundaries:
 
-1. `/setup` and `/prepare` prepare the tools, then `/select` returns the verified batch with read-only GitHub permissions.
+1. `/setup` and `/prepare` prepare the tools, then `/inspect` returns the verified batch with read-only GitHub permissions.
    - Automatic CI is gated by `publication-needed`; explicit manual retries can include completed work.
 2. The existing reusable CI workflow validates that exact `revision`.
 3. `manage-pr` runs independently with PR-write permissions.

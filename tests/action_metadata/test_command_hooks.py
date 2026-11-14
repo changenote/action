@@ -16,7 +16,7 @@ class CommandHookMetadata(unittest.TestCase):
         self.assertEqual(set(self.action["inputs"]), {
             "version", "github-token", "base-branch", "commit-message", "pr-title",
             "publish-script", "release-script", "cli-path", "operation", "prepare",
-            "expected-release-commit", "retry", "node-version", "npm-version",
+            "node-version", "npm-version",
             "rust-toolchain", "uv-version",
         })
         for key in ("publish-script", "release-script"):

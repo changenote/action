@@ -9,9 +9,7 @@ on:
         description: Manage the release PR or retry publication
         type: choice
         default: manage-pr
-        options:
-          - manage-pr
-          - retry-publication
+        options: [manage-pr, retry-publication]
 
 permissions:
   contents: read
@@ -33,7 +31,35 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: ./
+      # Local Actions use the reviewed event checkout. actionlint does not support $/ syntax.
+      - uses: ./ # zizmor: ignore[self-repository] -- Event-SHA checkout, not a downloaded or modified Action.
+        if: github.event_name == 'push'
         with:
           base-branch: main
-          operation: ${{ inputs.operation || 'auto' }}
+          operation: auto
+      - uses: ./setup # zizmor: ignore[self-repository] -- Event-SHA checkout.
+        if: github.event_name == 'workflow_dispatch'
+        id: cli
+      - uses: ./prepare # zizmor: ignore[self-repository] -- Event-SHA checkout.
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
+          base-branch: main
+          operation: ${{ inputs.operation == 'manage-pr' && 'manage-pr' || 'inspect' }}
+      - uses: ./manage-pr # zizmor: ignore[self-repository] -- Event-SHA checkout.
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'manage-pr'
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
+          base-branch: main
+      - uses: ./inspect # zizmor: ignore[self-repository] -- Event-SHA checkout.
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'retry-publication'
+        id: inspect
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
+          base-branch: main
+      - uses: ./publish # zizmor: ignore[self-repository] -- Event-SHA checkout.
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'retry-publication' && steps.inspect.outputs.release-commit != ''
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
+          base-branch: main
+          expected-release-commit: ${{ steps.inspect.outputs.release-commit }}

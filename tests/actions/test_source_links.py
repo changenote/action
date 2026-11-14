@@ -5,7 +5,7 @@ import shutil
 import unittest
 
 import test_actions
-from test_preview import snapshot
+from test_inspect import snapshot
 
 REPOSITORY = "https://github.com/test/repo"
 
@@ -90,7 +90,7 @@ class SourceLinks(unittest.TestCase):
                     f.git("remote", "remove", "origin")
                 else:
                     f.git("remote", "set-url", "origin", str(f.top / "not-the-publication-remote"))
-                _, out = f.action("preview")
+                _, out = f.action("inspect")
                 self.assertEqual(out["release-commit"], release)
                 self.assertEqual(out["ready"], "true")
                 _, out = f.action("publish")
@@ -111,7 +111,7 @@ class SourceLinks(unittest.TestCase):
         self.merge_release()
         self.assertFalse((f.repo / "CHANGELOG.md").exists())
         before = snapshot(f.remote)
-        for operation in ("preview", "publish"):
+        for operation in ("inspect", "publish"):
             result, _ = f.action(operation, ok=False)
             self.assertNotEqual(result.returncode, 0)
             self.assertIn("disabled", result.stderr)
