@@ -56,7 +56,7 @@ Inspection does not check registries.
 ## Advanced usage
 
 - [Plan actions, failure reports, and verification](../docs/github-actions-reference.md#publication-inspection).
-- [External CI and guarded publication](../docs/github-actions.md#external-ci-and-artifacts-logice-example).
+- [External CI and guarded publication](../docs/github-actions.md#external-ci-and-artifacts).
 - [Publish the verified batch](../publish/README.md).
 - [All Actions](../README.md).
 
