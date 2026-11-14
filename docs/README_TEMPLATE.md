@@ -60,7 +60,7 @@ An Action SHA pins the Action code, not CLI `latest`.
 
 <!-- Link to the relevant sections, not a duplicate guide; use docs/checks.md for PR checks. -->
 - [Complete interface and behavior]({{root}}docs/github-actions-reference.md).
-- [Workflow examples]({{root}}examples/github-actions/).
+- [Workflow examples](https://github.com/changenote/example/tree/main/examples/actions).
 
 ## License
 

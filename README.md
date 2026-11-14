@@ -88,7 +88,7 @@ See [token and branch requirements](docs/github-actions-reference.md#release-pr-
 - [GitHub Actions guide](docs/github-actions.md): setup, permissions, scripts, and external CI.
 - [Standalone Action reference](docs/github-actions-reference.md): CLI setup, preparation, PR management, inspection, and publication.
 - [PR note checks](docs/checks.md): contributor checks.
-- [Example workflows](examples/github-actions/): complete and composed workflows.
+- [Example workflows](https://github.com/changenote/example/tree/main/examples/actions): root, composed, command-hook, and external-CI templates.
 - [Development](docs/development.md): CLI compatibility, Action releases, and local checks.
 - [Migration](docs/migration.md): API changes, coordinated pin updates, and rollback.
 

@@ -37,7 +37,7 @@ jobs:
 This manual workflow publishes the latest validated batch, including incomplete work from an earlier push.
 The Action requires a clean checkout; [Prepare](../prepare/README.md) supplies project tools and offline caches for batch replay.
 The example uses the unguarded `inspect` preparation scope because the batch commit has not been selected in an earlier step.
-For CI or approval between selection and publication, use the [guarded workflow](../docs/github-actions.md#external-ci-and-artifacts-logice-example) instead.
+For CI or approval between selection and publication, use the [guarded workflow](../docs/github-actions.md#external-ci-and-artifacts) instead.
 
 ## Configuration
 

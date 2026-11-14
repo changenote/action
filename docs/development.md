@@ -18,7 +18,8 @@ The CLI and its crates.io and PyPI publication remain in [changenote/changenote]
 - `scripts/action/`: shared Action implementation and CLI installer.
 - `tests/actions/`: local Git/mock GitHub integration tests.
 - `tests/action_metadata/`: metadata, installation, and example checks.
-- `examples/github-actions/`: consumer workflow templates.
+
+Consumer workflow templates and their checks are in [changenote/example](https://github.com/changenote/example/tree/main/examples/actions).
 
 ## CLI installation
 

@@ -76,7 +76,7 @@ There are no compatibility aliases.
 Root defaults to PR-only work. Replacing the old built-in workflow without both publication controls does not enable built-in publication.
 Root only manages the PR on manual events.
 Do not pass a manual workflow menu choice directly into root.
-Use standalone Actions for manual PR work and publication retries, as the [release template](../examples/github-actions/release.yml) does.
+Use standalone Actions for manual PR work and publication retries, as the [composed workflow](https://github.com/changenote/example/blob/main/examples/actions/composed.yml) does.
 
 Standalone Actions do not implicitly prepare project package-manager tools and caches.
 When replacing a root operation, use `/prepare` first or retain caller-owned preparation.

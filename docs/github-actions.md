@@ -6,7 +6,7 @@ Choose an entry point for your workflow:
 | --- | --- |
 | Install tools and publish tags and GitHub Releases | [Config-driven publication](#config-driven-github-publication) |
 | Run project-owned publication scripts after a verified merge | [Root Action](#root-action-post-merge-commands) |
-| Validate the release commit in separate CI jobs | [External CI and artifacts](#external-ci-and-artifacts-logice-example) |
+| Validate the release commit in separate CI jobs | [External CI and artifacts](#external-ci-and-artifacts) |
 | Manage separate release operations and project tool setup | [Lower-level Actions](github-actions-reference.md) |
 | Check contributor PR notes without publication | [PR note checks](checks.md#github-action-report) |
 
@@ -56,7 +56,7 @@ For removed interfaces and coordinated pin updates, see [Migration](migration.md
 ## Root Action: post-merge commands
 
 Use `changenote/action@<full-action-commit-sha>` to manage version PRs and run optional project commands after a managed PR is merged.
-See [the command-hook workflow](../examples/github-actions/command-hooks.yml).
+See [the command-hook workflow](https://github.com/changenote/example/blob/main/examples/actions/command-hooks.yml).
 Replace all SHA placeholders with reviewed compatible full commit SHAs.
 The root Action needs Bash, Git, `gh`, `jq`, and Python 3 on Linux. Ubuntu runners provide these tools.
 It sets up uv and installs a CLI wheel from PyPI using `version`. CLI installation needs no Rust toolchain.
@@ -187,7 +187,7 @@ Use `/setup`, `/prepare`, `/manage-pr`, `/inspect`, and `/publish` for separate 
 
 ## Minimal workflow
 
-Copy [the minimal workflow](../examples/github-actions/release.yml) to `.github/workflows/release.yml`.
+Copy [the root usage example](../README.md#usage) to `.github/workflows/release.yml`.
 Replace its SHA placeholder with a reviewed full Action commit SHA.
 No separate CLI version pin, Rust installation, or publication script is needed.
 
@@ -197,7 +197,8 @@ It does not require a new batch in the current push or an associated merged mana
 It does not run project CI.
 Use the separate operations below when CI must validate the exact release commit before publication.
 
-The workflow menu defaults to `manage-pr` and calls the standalone PR Action after preparation.
+For a manual operation menu, use [the composed workflow](https://github.com/changenote/example/blob/main/examples/actions/composed.yml).
+Its menu defaults to `manage-pr` and calls the standalone PR Action after preparation.
 Its `retry-publication` choice prepares and inspects the latest batch, then calls standalone `publish` with the inspected commit. These are workflow choices, not root operations.
 The Action never merges its PR.
 
@@ -412,7 +413,7 @@ Read outputs only after a successful Action step, except documented failure repo
 - `releases`: compact JSON for every package in the batch:
 
   ```json
-  [{"package":"logice","version":"1.2.3","tag":"v1.2.3"}]
+  [{"package":"pkg-a","version":"1.2.3","tag":"v1.2.3"}]
   ```
 
 - `published`: whether this run created a remote tag or GitHub Release.
@@ -427,17 +428,17 @@ Root retains all these output names.
 PR management alone does not set `ready` to true.
 Standalone `publish` returns `release-commit`, `releases`, `published`, and `published-packages`.
 
-## External CI and artifacts: Logice example
+## External CI and artifacts
 
-Use [the Logice-style workflow](../examples/github-actions/logice-release.yml) when external CI must validate the selected commit.
-This is a migration example, not a modification to the Logice repository.
+Use [the external CI workflow](https://github.com/changenote/example/blob/main/examples/actions/external-ci.yml) when external CI must validate the selected commit.
+Adapt this single-package template to your repository.
 
 Its single package configuration needs no new fields:
 
 ```json
 {
   "packages": {
-    "logice": {
+    "pkg-a": {
       "path": ".",
       "version_file": "VERSION",
       "version_outputs": ["web/package.json"],
@@ -457,7 +458,7 @@ The workflow keeps these boundaries:
    - If the latest remote batch changes, publication stops before remote writes.
    - It does not silently switch to the newer batch.
 5. The existing Docker workflow receives the verified commit and tag from `releases`.
-   - The example uses the first entry because Logice has one release package.
+   - The example uses the first entry because its configuration has one release package.
    - For multiple packages, select the package explicitly before building artifacts.
 
 The consumer no longer needs a local setup-changenote Action, cache shell commands, internal script paths, or VERSION parsing.

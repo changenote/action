@@ -114,7 +114,7 @@ The other scopes do not suppress preparation failures.
 ## Release PR workflow
 
 This two-job example uses `/manage-pr` for PR management and `/publish` for built-in tags and GitHub Releases.
-It does not use the project script inputs. Use the [command-hook workflow](../examples/github-actions/command-hooks.yml) when your project owns publication.
+It does not use the project script inputs. Use the [command-hook workflow](https://github.com/changenote/example/blob/main/examples/actions/command-hooks.yml) when your project owns publication.
 Replace each SHA placeholder with a reviewed full commit SHA. The CLI and Action must use compatible release-plan formats.
 
 ```yaml

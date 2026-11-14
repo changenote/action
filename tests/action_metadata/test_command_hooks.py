@@ -52,19 +52,7 @@ class CommandHookMetadata(unittest.TestCase):
         self.assertIn("npm install --global --ignore-scripts", text)
         self.assertNotIn("python-version", text)
 
-    def test_hook_example_uses_public_root_and_safe_defaults(self):
-        example = yaml.load((ROOT / "examples/github-actions/command-hooks.yml").read_text(),
-                            Loader=yaml.BaseLoader)
-        self.assertEqual(set(example["on"]), {"push", "workflow_dispatch"})
-        job = example["jobs"]["release"]
-        self.assertEqual(job["if"], "github.ref == 'refs/heads/main'")
-        self.assertEqual(example["concurrency"]["cancel-in-progress"], "false")
-        steps = job["steps"]
-        self.assertEqual(steps[0]["with"]["persist-credentials"], "false")
-        self.assertEqual(steps[-1]["uses"], "changenote/action@<full-action-commit-sha>")
-        self.assertEqual(steps[-1]["with"]["publish-script"], "bash scripts/publish.sh")
-        self.assertEqual(steps[-1]["with"]["release-script"], "bash scripts/release.sh")
-        self.assertNotIn("scripts/action/", str(steps))
+    def test_command_hook_contract_is_documented(self):
         guide = (ROOT / "docs/github-actions.md").read_text()
         for key in (*self.action["inputs"], *self.action["outputs"]):
             self.assertIn("`" + key + "`", guide)
