@@ -350,7 +350,7 @@ exec "$REAL_GIT" "$@"
         self.f.commit("note")
         self.f.git("push", "origin", "stable")
         self.f.action()
-        self.f.git("fetch", "origin", "narumi/chore/changenote-release-stable")
+        self.f.git("fetch", "origin", "changenote-release/stable")
         self.f.git("merge", "--squash", "FETCH_HEAD")
         sha = self.f.commit("stable release")
         self.f.git("push", "origin", "stable")

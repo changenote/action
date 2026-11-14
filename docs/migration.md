@@ -5,6 +5,20 @@ The Rust CLI and its crates.io and PyPI publication belong to `changenote/change
 The repositories have independent versions and commit SHAs.
 The Action `version` input selects a published CLI, not the Action release.
 
+## Release PR branch names
+
+New Release PRs use `changenote-release/<base-branch>` instead of `narumi/chore/changenote-release-<base-branch>`.
+The suffix is the selected `base-branch`, or the repository default branch when that input is empty.
+This applies to root and `/manage-pr`.
+
+1. Update branch rules and workflow head-branch filters to allow the new name.
+2. Before upgrading, merge and finish publication for the existing Release PR, or close it without merging.
+   - The next PR-management run creates a PR from the new branch when notes remain.
+   - The Action does not rename, close, or delete PRs and branches that use the previous name.
+3. Update repository-owned managed-merge routing to recognize the new head name when updating Action pins.
+   - The Action and CLI repository routers accept both names so existing managed merges and older pinned Actions remain valid.
+   - Base branch, repository identity, merged commit, and body-marker checks remain required.
+
 ## Root release controls
 
 This is a breaking Action API change under the pre-1.0 minor-release policy.
