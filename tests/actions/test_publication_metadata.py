@@ -5,7 +5,7 @@ import re
 import unittest
 
 import test_actions
-from test_preview import snapshot
+from test_inspect import snapshot
 
 
 class PublicationMetadata(unittest.TestCase):
@@ -115,7 +115,7 @@ class PublicationMetadata(unittest.TestCase):
                 self.assertFalse((self.f.repo / "injected").exists())
 
     def test_no_batch_and_guarded_no_batch(self):
-        for action in ("preview", "publish"):
+        for action in ("inspect", "publish"):
             _, outputs = self.composite(action)
             self.assertEqual(outputs["release-commit"], "")
             self.assert_releases(outputs, [])
@@ -178,7 +178,7 @@ class PublicationMetadata(unittest.TestCase):
             {"package": "pkg", "version": "2.0.1", "tag": "sdk/v2.0.1"},
             {"package": "pkg-b", "version": "2.0.1", "tag": "go/sub/v2.0.1"},
         ]
-        _, preview = self.composite("preview")
+        _, preview = self.composite("inspect")
         self.assert_releases(preview, expected)
         for attempt in range(2):
             _, outputs = self.composite(expected=release)
@@ -189,12 +189,12 @@ class PublicationMetadata(unittest.TestCase):
                              [{"name": "pkg-b", "version": "2.0.1"}] if attempt == 0 else [])
         self.assertEqual(self.f.state()["releases"][0]["body"], "keep")
 
-    def test_preview_conflicts_retain_full_plan_and_verified_metadata(self):
+    def test_inspect_conflicts_retain_full_plan_and_verified_metadata(self):
         release = self.multi_release()
         self.f.git("tag", "sdk/v2.0.1", release + "^")
         self.f.git("push", "origin", "refs/tags/sdk/v2.0.1")
         tags = self.f.git("ls-remote", "--tags", "origin")
-        result, outputs = self.composite("preview", ok=False)
+        result, outputs = self.composite("inspect", ok=False)
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(outputs["ready"], "false")
         self.assertEqual(outputs["release-commit"], release)
@@ -211,21 +211,21 @@ class PublicationMetadata(unittest.TestCase):
         self.f.git("commit", "--amend", "--no-edit")
         release = self.f.git("rev-parse", "HEAD")
         self.f.git("push", "--force", "origin", "main")
-        for action in ("preview", "publish"):
+        for action in ("inspect", "publish"):
             result, outputs = self.composite(action, expected=release, ok=False)
             self.assertNotEqual(result.returncode, 0)
             self.assert_releases(outputs, [])
             self.assertEqual(outputs["release-commit"], "")
         self.assert_no_publication()
 
-    def test_preview_metadata_does_not_modify_dirty_source(self):
+    def test_inspect_metadata_does_not_modify_dirty_source(self):
         release = self.f.release()
         (self.f.repo / "VERSION").write_text("dirty\n")
         (self.f.repo / "untracked").write_text("keep\n")
         self.f.git("add", "--", "VERSION")
         before = snapshot(self.f.repo)
         remote = snapshot(self.f.remote)
-        _, outputs = self.composite("preview")
+        _, outputs = self.composite("inspect")
         self.assertEqual(outputs["release-commit"], release)
         self.assert_releases(outputs, [{"package": "pkg", "version": "1.0.1", "tag": "v1.0.1"}])
         self.assertEqual(snapshot(self.f.repo), before)

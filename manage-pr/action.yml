@@ -36,8 +36,7 @@ runs:
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
-        INPUT_OPERATION: manage-pr
-      run: bash "$ACTION_PATH/../scripts/action/release.sh" validate
+      run: bash "$ACTION_PATH/../scripts/action/inputs.sh" manage-pr
     - name: Set up uv
       if: inputs.cli-path == ''
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3

@@ -49,7 +49,7 @@ class StaleRelease(unittest.TestCase):
     def assert_published(self, release, version="1.0.1"):
         f = self.f
         pending = (f.repo / self.pending_path).read_bytes()
-        _, preview = f.action("preview")
+        _, preview = f.action("inspect")
         self.assertEqual(preview["ready"], "true")
         self.assertEqual(preview["release-commit"], release)
         _, published = f.action("publish")
@@ -91,7 +91,7 @@ class StaleRelease(unittest.TestCase):
         release = self.release(no_lockfiles=True)
         pending = (f.repo / self.pending_path).read_bytes()
         for attempt in range(2):
-            _, preview = f.action("preview")
+            _, preview = f.action("inspect")
             self.assertEqual(preview["ready"], "true")
             self.assertEqual(preview["release-commit"], release)
             _, published = f.action("publish")
@@ -144,11 +144,11 @@ class StaleRelease(unittest.TestCase):
                 self.f.git("add", "--", self.pending_path)
                 self.f.git("commit", "--amend", "--no-edit")
                 self.f.git("push", "--force", "origin", "main")
-                for action in ("preview", "publish"):
+                for action in ("inspect", "publish"):
                     result, outputs = self.f.action(action, ok=False)
                     self.assertNotEqual(result.returncode, 0)
                     self.assertIn("generated release tree", result.stderr)
-                    if action == "preview":
+                    if action == "inspect":
                         self.assertEqual(outputs["ready"], "false")
                 self.assertEqual(self.f.state()["releases"], [])
                 self.assertEqual(self.f.git("ls-remote", "--tags", "origin"), "")

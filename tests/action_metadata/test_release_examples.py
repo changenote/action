@@ -18,26 +18,28 @@ def load(name):
 class ReleaseExamples(unittest.TestCase):
     def test_minimal_workflow_only_needs_checkout_and_action_inputs(self):
         workflow = load("release.yml")
-        self.assertEqual(workflow["permissions"], {"contents": "write", "pull-requests": "write"})
+        self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertEqual(set(workflow["on"]), {"push", "workflow_dispatch"})
         self.assertEqual(workflow["concurrency"]["cancel-in-progress"], "false")
         steps = workflow["jobs"]["release"]["steps"]
-        self.assertEqual(len(steps), 2)
         self.assertEqual(steps[0]["with"]["persist-credentials"], "false")
         self.assertEqual(steps[1]["uses"], "changenote/action@<full-action-commit-sha>")
-        self.assertEqual(steps[1]["with"], {"operation": "${{ inputs.operation || 'auto' }}"})
+        self.assertEqual(steps[1]["if"], "github.event_name == 'push'")
+        self.assertEqual(steps[1]["with"], {"base-branch": "main", "operation": "auto"})
+        self.assertEqual(steps[-1]["uses"], "changenote/action/publish@<full-action-commit-sha>")
+        self.assertEqual(steps[-1]["with"]["expected-release-commit"], "${{ steps.inspect.outputs.release-commit }}")
 
     def test_logice_keeps_exact_commit_ci_and_artifacts_separate(self):
         workflow = load("logice-release.yml")
         jobs = workflow["jobs"]
         self.assertEqual(workflow["permissions"], {"contents": "read"})
         self.assertNotIn("concurrency", workflow)
-        self.assertNotIn("concurrency", jobs["select"])
-        self.assertEqual(jobs["validate"]["needs"], "select")
+        self.assertNotIn("concurrency", jobs["inspect"])
+        self.assertEqual(jobs["validate"]["needs"], "inspect")
         self.assertEqual(jobs["validate"]["uses"], "./.github/workflows/ci.yml")
-        expected = "${{ needs.select.outputs.release-commit }}"
+        expected = "${{ needs.inspect.outputs.release-commit }}"
         self.assertEqual(jobs["validate"]["with"]["revision"], expected)
-        self.assertEqual(jobs["publish"]["needs"], ["select", "validate"])
+        self.assertEqual(jobs["publish"]["needs"], ["inspect", "validate"])
         self.assertIn("needs.validate.result == 'success'", jobs["publish"]["if"])
         self.assertEqual(jobs["publish"]["steps"][-1]["with"]["expected-release-commit"], expected)
         self.assertEqual(jobs["publish"]["steps"][0]["with"]["ref"], expected)
@@ -49,9 +51,9 @@ class ReleaseExamples(unittest.TestCase):
         self.assertEqual(jobs["docker"]["uses"], "./.github/workflows/docker.yml")
         self.assertEqual(jobs["docker"]["with"]["revision"], "${{ needs.publish.outputs.release-commit }}")
         self.assertEqual(jobs["docker"]["with"]["version-tag"], "${{ fromJSON(needs.publish.outputs.releases)[0].tag }}")
-        self.assertIn("needs.select.outputs.publication-needed == 'true'", jobs["validate"]["if"])
+        self.assertIn("needs.inspect.outputs.publication-needed == 'true'", jobs["validate"]["if"])
         self.assertIn("inputs.operation == 'retry-publication'", jobs["validate"]["if"])
-        self.assertEqual(jobs["select"]["steps"][-1]["uses"], "changenote/action/select@<full-action-commit-sha>")
+        self.assertEqual(jobs["inspect"]["steps"][-1]["uses"], "changenote/action/inspect@<full-action-commit-sha>")
         self.assertEqual(jobs["release"]["steps"][-1]["uses"], "changenote/action/manage-pr@<full-action-commit-sha>")
         self.assertEqual(jobs["publish"]["steps"][-1]["uses"], "changenote/action/publish@<full-action-commit-sha>")
         self.assertIn("inputs.operation == 'retry-publication'", jobs["docker"]["if"])
@@ -93,7 +95,7 @@ class ReleaseExamples(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_public_contract_is_documented(self):
-        action = yaml.load((ROOT / "release/action.yml").read_text(), Loader=yaml.BaseLoader)
+        action = yaml.load((ROOT / "action.yml").read_text(), Loader=yaml.BaseLoader)
         guide = (ROOT / "docs/github-actions.md").read_text()
         for key in (*action["inputs"], *action["outputs"]):
             self.assertIn("`" + key + "`", guide)

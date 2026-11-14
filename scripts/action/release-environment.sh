@@ -8,7 +8,7 @@ mode=${1:?Expected discover or warm}
 [[ $mode == discover || $mode == warm ]] || fail 'Unknown environment operation.'
 operation=${INPUT_OPERATION:-auto}
 case $operation in
-  auto|manage-pr|select|publish|retry-publication) ;;
+  auto|manage-pr|inspect|publish) ;;
   *) fail 'Unknown environment operation scope.' ;;
 esac
 setup_readonly
@@ -71,7 +71,7 @@ inspect_environment() {
 if [[ $operation != manage-pr ]]; then
   find_publication_batch
   if [[ $operation == publish ]]; then
-    [[ ${INPUT_EXPECTED_RELEASE_COMMIT:-} == "$release" ]] || fail 'Release batch changed after selection; select and validate it again.'
+    [[ ${INPUT_EXPECTED_RELEASE_COMMIT:-} == "$release" ]] || fail 'Release batch changed after inspection; inspect and validate it again.'
   fi
   if [[ -n $release ]]; then inspect_environment "$parent" consumed; fi
 fi

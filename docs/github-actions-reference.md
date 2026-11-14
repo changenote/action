@@ -2,14 +2,14 @@
 
 Use these Actions when the workflow manages separate release operations and project package-manager setup.
 Each operation installs the CLI selected by `version`, or reuses a trusted same-job `cli-path` returned by `/setup`.
-Use `/prepare` for project tools and offline caches; `/manage-pr`, `/select`, and `/publish` perform separate operations.
-The root exposes the complete workflow. `/release` remains a compatibility entry point, not a second implementation.
+Use `/prepare` for project tools and offline caches; `/manage-pr`, `/inspect`, and `/publish` perform separate operations.
+The root exposes complete `hooks` and `auto` workflows. Use standalone Actions for individual operations.
 For automatic setup, use root's [config-driven release operations](github-actions.md#config-driven-github-publication).
 For project-owned publication scripts, use the [root Action guide](github-actions.md#root-action-post-merge-commands).
 
 - [Requirements](#requirements)
 - [Release PR workflow](#release-pr-workflow)
-- [Publication preview](#publication-preview)
+- [Publication inspection](#publication-inspection)
 - [Publication workflow](#publication-workflow)
 - [Inputs and outputs](#inputs-and-outputs)
 - [Recovery and limits](#recovery-and-limits)
@@ -27,11 +27,12 @@ Each Action sets up uv and installs a prebuilt changenote wheel from PyPI.
   - Action scripts come from the Action checkout, not the consumer repository.
 - Package version files, lockfiles, changelogs, and `.changenote/releases.json` must not be symlinks.
   - Both writing Actions check the batch path before CLI writes.
+- For standalone operations, use the same project tool versions as preparation. Set `RUSTUP_TOOLCHAIN` explicitly when it must override checked-in Rust toolchain files.
 - Prepare the package managers and cached dependencies required by [lockfile synchronization](https://github.com/changenote/changenote/blob/main/docs/configuration.md#automatic-lockfile-synchronization).
   - The CLI updates configured primary and additional version files and supported existing lockfiles, not unlisted manifests.
 - Select a CLI version compatible with the reviewed Action SHA.
   - The CLI version and Action commit SHA are different values.
-  - Use the same exact `version` across PR generation, preview, and publication to avoid changes between jobs.
+  - Use the same exact `version` across PR generation, inspection, and publication to avoid changes between jobs.
 
 ## Release PR workflow
 
@@ -94,34 +95,33 @@ In repository settings, enable **Actions > General > Allow GitHub Actions to cre
 
 PRs created with the default `GITHUB_TOKEN` do not automatically trigger PR workflows. If CI must run on the Release PR, use a GitHub App token (recommended) or PAT with repository contents and pull requests write permissions. Pass it through `github-token`. Checkout credentials do not select the Action's token.
 
-## Publication preview
+## Publication inspection
 
-The `/select` and `/preview` Actions use the same implementation and output contract.
-Both return completed batches; `publication-needed` reports incomplete GitHub work independently of `release-commit` and `releases`.
-The preview Action requires Linux, Bash, Git, `gh`, `jq`, and standard coreutils. It installs the selected CLI wheel from PyPI through uv. It needs only `contents: read`. It reads the selected remote branch in a temporary repository; the caller's files, index, refs, tags, and Git identity are unchanged. A dirty or stale source checkout does not select the release. Temporary fetches and release-tree reconstruction are removed on success and failure.
+The `/inspect` Action returns completed batches; `publication-needed` reports incomplete GitHub work independently of `release-commit` and `releases`.
+The inspection Action requires Linux, Bash, Git, `gh`, `jq`, and standard coreutils. It installs the selected CLI wheel from PyPI through uv. It needs only `contents: read`. It reads the selected remote branch in a temporary repository; the caller's files, index, refs, tags, and Git identity are unchanged. A dirty or stale source checkout does not select the release. Temporary fetches and release-tree reconstruction are removed on success and failure.
 
 ```yaml
-name: Publication preview
+name: Publication inspection
 on:
   workflow_dispatch:
 permissions:
   contents: read
 jobs:
-  preview:
+  inspect:
     runs-on: ubuntu-latest
     steps:
-      - uses: changenote/action/preview@<full-action-commit-sha>
+      - uses: changenote/action/inspect@<full-action-commit-sha>
         with:
           base-branch: main
 ```
 
-This is a template, not part of the production release workflow. Use a reviewed Action SHA and a compatible CLI `version`. Preview uses the same latest-batch discovery, full-tree verification, and remote-state inspection as publication. It never creates tags, commits, PRs, or Releases and does not inspect registries.
+This is a template, not part of the production release workflow. Use a reviewed Action SHA and a compatible CLI `version`. Inspection uses the same latest-batch discovery, full-tree verification, and remote-state inspection as publication. It never creates tags, commits, PRs, or Releases and does not inspect registries.
 
 The `publication-plan` output is a compact JSON array of `name`, `version`, `tag`, `action`, and `conflicts`. Actions are `create-tag-and-release`, `create-release`, `none`, or `conflict`. Conflicts include a wrong remote tag identity, a draft Release, or a Release without its remote tag. Every batch entry is inspected before a conflict report is emitted. The `ready` output is true only after complete inspection finds no conflicts. `release-commit` identifies the verified batch commit.
 
 When no batch exists, the Action succeeds with `ready=true`, an empty commit, and `[]`. Conflicts return the complete inspected report with `ready=false` and fail the step. Invalid input, tree/batch validation failures, or unavailable remote data fail without a ready plan; use the error diagnostic, not an empty plan, as the result. A readable summary goes to the step log. API failures are never treated as missing releases.
 
-The preview is advisory, not a reservation. Remote state can change afterward; real publication repeats preflight and race checks. Preview does not grant permission to publish.
+The inspection is advisory, not a reservation. Remote state can change afterward; real publication repeats preflight and race checks. Inspection does not grant permission to publish.
 
 ## Publication workflow
 
@@ -152,7 +152,7 @@ Upgrade the CLI and all Action pins together. New releases and local tag creatio
 Existing remote tags must point to the selected commit. Missing tags and GitHub Releases are created; existing release text is not replaced. Draft releases, missing tags for existing releases, malformed batches, batch deletion, manually edited release trees, and tag conflicts stop publication. A batch in a root commit cannot be verified.
 If no batch exists, publication makes no changes.
 
-The built-in `/release` and `/publish` Actions can recover publication of the latest validated batch when invoked after later pushes. They do not implement registry uploads.
+Root `auto` on push and standalone `/publish` can recover publication of the latest validated batch after later pushes. They do not implement registry uploads.
 The root Action runs custom scripts only for a managed batch merged in the triggering push range.
 An unrelated later push does not retry an older batch, and manual dispatch only manages the PR.
 To retry custom scripts, re-run the original eligible workflow. A newer batch blocks that retry; scripts must handle partial publication safely.
@@ -162,17 +162,17 @@ To retry custom scripts, re-run the original eligible workflow. A newer batch bl
 | Action | Input | Default |
 | --- | --- | --- |
 | All public Actions | `version` | `latest`; or an exact stable PyPI CLI version with a required `v` prefix |
-| Release PR, Publication, Preview | `github-token` | Workflow token |
-| Release PR, Publication, Preview | `base-branch` | Repository default branch |
+| Release PR, Publication, Inspection | `github-token` | Workflow token |
+| Release PR, Publication, Inspection | `base-branch` | Repository default branch |
 | Release PR | `commit-message` | `chore(release): version packages` |
 | Release PR | `pr-title` | `chore(release): version packages` |
 | Root | `publish-script`, `release-script` | Empty; no custom publication |
 | Root | `operation` | `hooks`; explicitly choose `auto` for built-in publication |
-| Root, `/release` | `prepare` | `true` for built-in operations; `false` uses caller-owned preparation |
+| Root | `prepare` | `true` for built-in operations; `false` uses caller-owned preparation |
 | Operation Actions | `cli-path` | Empty; or a trusted same-job `/setup` output |
 | Publication | `expected-release-commit` | Empty; retain latest-batch selection |
 
-The root and `/release` share the built-in outputs described in the [main guide](github-actions.md#outputs).
+Root outputs are described in the [main guide](github-actions.md#outputs).
 In root's default `hooks` operation, `published` and `ready` remain false because script success does not inspect GitHub publication state.
 The root Action outputs `has-notes` (`true` or `false`), `pr-number` (number or empty string), and `pr-operation` (`created`, `updated`, `closed`, or `none`). `updated` includes a no-op version rerun that refreshes the PR metadata.
 In `hooks`, it also returns `release-commit` and `releases` for a verified managed merge, independently of configured commands or GitHub publication state. No selected merge returns an empty commit and `[]`. Read these outputs only after success.
@@ -180,7 +180,7 @@ In `hooks`, it also returns `release-commit` and `releases` for a verified manag
 The publication Action accepts an optional `expected-release-commit`, a full lowercase 40-character commit SHA.
 A mismatch with the verified latest batch fails before remote tag or Release writes.
 Use this input after external CI instead of calling internal scripts.
-Both preview and publication output `releases`, a JSON array of `package`, `version`, and `tag` for the verified batch.
+Both inspection and publication output `releases`, a JSON array of `package`, `version`, and `tag` for the verified batch.
 It includes all batch packages, including retries that create no remote objects.
 If no batch exists, `releases` is `[]`.
 

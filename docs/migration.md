@@ -1,105 +1,93 @@
 # Action repository migration
 
-GitHub Actions move from the CLI repository, `changenote/changenote`, to `changenote/action`.
-This migration changes repository ownership of the Action implementation and documentation. It does not require unrelated CLI behavior changes.
-
-## Repository boundaries
-
-The Action repository owns these five entry points. Their paths remain unchanged:
-
-| Previous entry point | New entry point |
-| --- | --- |
-| `changenote/changenote` | `changenote/action` |
-| `changenote/changenote/release` | `changenote/action/release` |
-| `changenote/changenote/check` | `changenote/action/check` |
-| `changenote/changenote/preview` | `changenote/action/preview` |
-| `changenote/changenote/publish` | `changenote/action/publish` |
-
-Use `@<full-action-commit-sha>` from the new repository after review.
-Do not put an old CLI repository SHA after `changenote/action@`.
-Existing full-SHA references to old Action commits remain valid. The move does not rewrite those commits.
-
-The Action repository also owns shared scripts, Action tests, consumer workflows, and Action guides.
-The CLI repository retains Rust code, the Python distribution, CLI guides, and its own release workflow.
-Its crates.io helper is now `scripts/publish-crate.py`; crates.io and PyPI publication are not shared Action features.
-The CLI and Action have independent versions and commit SHAs.
-The Action's first planned release is `v0.0.1`; `version` selects the CLI separately.
-See [Action releases](development.md#action-releases) for version PRs and publication.
-
-## CLI version selection
-
-All standalone operation Actions can install a changenote wheel from PyPI through uv.
-`version` defaults to `latest`, the latest stable PyPI release; exact stable versions require a `v` prefix, such as `v0.9.2`.
-The Action repository no longer stores a CLI source pin.
-A standalone operation needs no separate CLI installation.
-To reuse one installation within a job, use `/setup` and pass its trusted `cli-path` to subsequent Actions.
-Use the same exact `version` across release jobs when repeatable replay is required.
-
-Installation uses an isolated runner temporary tool environment, with source builds and project configuration disabled.
-Each Action sets up uv. `/release` retains `rust-toolchain` only for configured Cargo lockfiles.
-There is no Action-managed executable cache that can retain an outdated `latest` resolution.
-CI installs the latest published PyPI CLI; integration tests use that executable on `PATH`.
-Registry versions can differ; see [Published CLI compatibility](development.md#published-cli-compatibility) before adoption.
-See [Development](development.md#cli-installation) for local setup.
-
-Existing full-SHA references still execute their historical setup, including its old CLI pin.
-The repository's own Release workflow uses `./release` from its `${{ github.sha }}` checkout.
-This local implementation installs the CLI from PyPI and supports `version`.
-Do not add the new `version` input to an old implementation that does not support it.
+The Action implementation belongs to `changenote/action`.
+The Rust CLI and its crates.io and PyPI publication belong to `changenote/changenote`.
+The repositories have independent versions and commit SHAs.
+The Action `version` input selects a published CLI, not the Action release.
 
 ## Composable Action interfaces
 
-The root now exposes built-in operations as well as its existing scripts.
-Its default `operation: hooks` preserves existing root publication behavior.
-Select `auto` explicitly to enable built-in GitHub publication.
-The `/release` compatibility entry point retains its `auto` default and uses the same dispatcher.
-Nonempty root script inputs require `hooks`; other operations reject them.
+This revision has exactly seven public entry points: root, `setup`, `prepare`, `check`, `manage-pr`, `inspect`, and `publish`.
+There are no compatibility aliases.
 
-Use `/setup`, `/prepare`, `/manage-pr`, `/select`, and `/publish` for separate stages.
-The `/preview` compatibility name uses the same inspection as `/select`.
-Selection, including `/release operation: select`, now returns completed batches without a retry flag.
-Before updating a workflow that gates execution on a nonempty commit, add an explicit `publication-needed` check for automatic GitHub work.
-Keep manual downstream retries explicit and inspect registry state separately.
+| Previous interface | Replacement |
+| --- | --- |
+| `changenote/action/release` | Root with explicit `operation: auto` for a complete built-in workflow |
+| `changenote/action/select` or `changenote/action/preview` | `changenote/action/inspect` |
+| Root `operation: manage-pr` | `changenote/action/manage-pr` |
+| Root `operation: select` | `changenote/action/inspect` |
+| Root `operation: publish` | `changenote/action/publish` |
+| Root `operation: retry-publication` | Inspect, then publish with the inspected commit |
+| Root `retry` input | Remove it; inspection always includes completed batches |
+| Root `expected-release-commit` input | Pass the guard to standalone `publish` |
+| Preparation scope `select` | Preparation scope `inspect` |
+| Preparation scope `retry-publication` | Use `inspect`, then inspect and publish explicitly |
 
-The new paths need a reviewed published Action SHA.
-Do not apply new inputs to the example repository's older production pin.
-The inactive templates in `changenote/example/examples/actions/` show the new root and composed workflows.
-A maintainer must publish and review the new Action revision, replace each template placeholder, validate hosted behavior, and then update the active workflow.
-Local edits and tests do not authorize that deployment.
+Root still defaults to `hooks`. Replacing the old built-in workflow with root without setting `auto` does not enable built-in publication.
+Both root modes only manage the PR on manual events.
+Do not pass a manual workflow menu choice directly into root.
+Use standalone Actions for manual PR work and publication retries, as the [release template](../examples/github-actions/release.yml) does.
+
+Standalone Actions do not implicitly prepare project package-manager tools and caches.
+When replacing a root operation, use `/prepare` first or retain caller-owned preparation.
+Keep the same tool versions for preparation and the standalone operation. For Rust, set `RUSTUP_TOOLCHAIN` in the caller when it must override a checked-in toolchain file; root `auto` still selects `rust-toolchain` itself.
+The `/prepare` input `operation` is an environment scope: `manage-pr`, `inspect`, `publish`, or `auto`.
+The `publish` scope requires the exact `expected-release-commit`; the other scopes reject this guard.
+`/prepare` does not run that release operation.
+
+Inspection returns verified completed batches as well as incomplete batches.
+Gate automatic GitHub work with `publication-needed`, not a nonempty `release-commit`.
+Keep manual downstream retries explicit. GitHub completion does not describe registry or artifact completion.
+Standalone `publish` preserves optional latest-batch publication; after CI, supply `expected-release-commit` to lock the target.
+
+## CLI version selection
+
+Use `latest` or an exact stable PyPI CLI version with a required `v` prefix.
+Each operation installs a prebuilt wheel unless it receives a trusted `cli-path` from same-job `/setup`.
+Use the same exact compatible CLI and project tool versions across PR generation, inspection, and publication.
+Do not transfer executable paths between jobs.
+
+The installer disables project configuration, source overrides, and source builds.
+It does not fall back to Cargo or a caller-installed executable after failure.
+See [CLI compatibility](development.md#published-cli-compatibility).
 
 ## Production cutover
 
-Creating migration branches and pull requests does not approve a release, tag creation, or registry upload.
-Before cutover, CLI and example workflows use full-SHA references to pre-migration Actions in `changenote/changenote`.
-Migration PRs can pin an actual commit from the new Action branch after that branch is pushed.
-Merge the Action PR before the CLI and example PRs that use its commit.
-Do not use an unpinned `@main` Action reference.
+Existing full-SHA pins keep executing their historical code.
+A new revision cannot execute a removed entry point or root operation.
+Migrate the workflow and Action SHA together.
 
-1. Review and publish the new `changenote/action` repository **first**, with separate maintainer authorization.
-   - Do not run the CLI's production release workflow against unpublished Action paths.
-2. Obtain and review the new Action commit's actual full SHA after publication.
-   - Confirm that the required entry points and shared CLI installer are present.
-   - Do not invent a SHA or reuse a SHA from the old repository.
-3. Replace the CLI workflow's pre-migration Action references with `changenote/action@<new-sha>`, `changenote/action/preview@<new-sha>`, and `changenote/action/publish@<new-sha>`.
-   - Use the same reviewed new Action revision for all three steps, and update the workflow contract tests.
-   - Select the CLI through `version`, separately from the Action SHA.
-   - Complete this switch before removing the old Action entry points from remote main.
-4. Update consumer workflows only after the new SHA exists and is reviewed.
-   - Keep consumer PRs dependent on the Action PR until its pinned commit is reviewed and merged.
-   - Documentation placeholders are templates, not production pins.
-5. With separate authorization, test hosted workflows in a disposable repository.
-   - Verify event delivery, installed CLI version, cache behavior, token permissions, branch rules, and publication guards.
-   - Obtain explicit approval before any production release or registry upload.
+1. Have a maintainer review and make the new Action revision available before downstream cutover.
+2. Obtain the actual reviewed full Action SHA. Do not invent a SHA or use an old CLI repository SHA.
+3. Update downstream Action paths, preparation scopes, operation calls, and contract tests together.
+   - The CLI repository currently has a pinned inspection call under the former name.
+   - The example repository also has templates that use removed paths and root operations.
+   - These sibling repositories are not changed by this refactor.
+4. Preserve the external-CI commit guard, permission boundaries, concurrency, and manual retry policy.
+5. Test hosted behavior in an authorized disposable repository before production adoption.
 
-## Verification and recovery
+Documentation SHA placeholders are templates, not production pins.
+Creating a branch or PR does not authorize package publication, version tags, a production Release run, or registry uploads.
 
-Local verification passed: trusted CLI installation, 212 Action tests, CLI workflow and publication tests, Rust checks, and Python distribution checks.
-ShellCheck, actionlint, workflow security checks, and local documentation link checks also passed.
-The integration tests isolate local Git configuration and use an installed registry CLI.
+## Verification and hosted handoff
 
-Hosted checks remain unverified by this local migration. Local Git/mock tests and link checks do not establish release readiness.
-No release is approved.
+Local Git and mocked GitHub tests do not establish hosted release readiness.
+Current local verification evidence belongs in the implementation PR; historical CI results are not evidence for a changed revision.
 
-To stop automation, disable the consumer workflow and cancel active runs separately.
-To restore prior Action code, restore the previous reviewed full-SHA references and matching workflow.
-Inspect remote publication state before a retry. Do not edit saved release batches, move existing tags, or replace published artifacts.
+| Responsible role | Prerequisite and action | Expected result and unverified behavior | Restriction |
+| --- | --- | --- | --- |
+| Repository maintainer | After separate authorization, use a disposable repository and reviewed Action SHA to exercise push, manual PR management, and exact-commit publication retries. | Confirm event delivery, wheel/tool installation, dependency caches, token scopes, branch rules, merge association, script order, and partial-publication recovery. | No production release is authorized by local completion. |
+| Repository maintainer | Configure an approved App token if Release PR CI must run. | Confirm PR workflow delivery and permission boundaries, which local mocks cannot prove. | Do not grant extra token scopes without review. |
+| CLI and example maintainers | After the new SHA is available and reviewed, update their workflows and contract tests together. | Confirm the seven-entry API and CI-selected commit guards work with the selected CLI. | Keep current production pins until coordinated migration is ready. |
+| Registry/project owner | Review artifacts and obtain specific upload authorization before testing registry publication. | Confirm credentials, OIDC, registry ownership, and deployment approvals. | Dummy-command tests authorize no upload. Never send secrets through chat. |
+
+## Rollback and recovery
+
+Disable affected workflows and cancel active runs separately before unsafe automation continues.
+Restore the previous reviewed full Action SHA and its matching workflow, including historical paths and inputs.
+Code rollback does not undo remote tags, GitHub Releases, or registry uploads.
+
+Inspect remote publication state before retrying a partial failure.
+Do not edit saved release batches, move existing tags, or replace published artifacts.
+Discovery covers the latest batch only; complete that batch before merging another Release PR.
+Use a new release to correct a faulty published version.

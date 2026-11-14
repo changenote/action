@@ -136,7 +136,7 @@ class SwiftApps(unittest.TestCase):
         self.assertEqual({entry["tag"] for entry in batch}, self.tags)
         f.later_commit()
         before_refs = f.git("ls-remote", "origin")
-        _, preview = f.action("preview")
+        _, preview = f.action("inspect")
         self.assertEqual(preview["ready"], "true")
         self.assertEqual(preview["release-commit"], release)
         self.assertEqual(json.loads(preview["publication-plan"]), [
@@ -168,7 +168,7 @@ class SwiftApps(unittest.TestCase):
         hook = f.remote / "hooks/pre-receive"
         hook.write_text(f"#!/bin/sh\nprintf 'push attempted\\n' >> '{push_attempts}'\nexit 99\n")
         hook.chmod(0o755)
-        for action in ("preview", "publish"):
+        for action in ("inspect", "publish"):
             with self.subTest(action=action):
                 result, _ = f.action(action, ok=False)
                 self.assertNotEqual(result.returncode, 0)

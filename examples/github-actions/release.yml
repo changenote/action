@@ -1,4 +1,5 @@
 name: Release
+
 on:
   push:
     branches: [main]
@@ -9,19 +10,55 @@ on:
         type: choice
         default: manage-pr
         options: [manage-pr, retry-publication]
+
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
+
 concurrency:
-  group: changenote-release-${{ github.ref }}
+  group: changenote-release-main
   cancel-in-progress: false
+
 jobs:
   release:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: actions/checkout@<full-checkout-commit-sha>
         with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
           persist-credentials: false
       - uses: changenote/action@<full-action-commit-sha>
+        if: github.event_name == 'push'
         with:
-          operation: ${{ inputs.operation || 'auto' }}
+          base-branch: main
+          operation: auto
+      - uses: changenote/action/setup@<full-action-commit-sha>
+        if: github.event_name == 'workflow_dispatch'
+        id: cli
+      - uses: changenote/action/prepare@<full-action-commit-sha>
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
+          base-branch: main
+          operation: ${{ inputs.operation == 'manage-pr' && 'manage-pr' || 'inspect' }}
+      - uses: changenote/action/manage-pr@<full-action-commit-sha>
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'manage-pr'
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
+          base-branch: main
+      - uses: changenote/action/inspect@<full-action-commit-sha>
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'retry-publication'
+        id: inspect
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
+          base-branch: main
+      - uses: changenote/action/publish@<full-action-commit-sha>
+        if: github.event_name == 'workflow_dispatch' && inputs.operation == 'retry-publication' && steps.inspect.outputs.release-commit != ''
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
+          base-branch: main
+          expected-release-commit: ${{ steps.inspect.outputs.release-commit }}
