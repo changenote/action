@@ -1,8 +1,10 @@
 # Lower-level GitHub Actions
 
 Use these Actions when the workflow manages separate release operations and project package-manager setup.
-Each Action installs the CLI selected by its `version` input.
-For automatic setup, use the [config-driven release Action](github-actions.md#config-driven-github-publication).
+Each operation installs the CLI selected by `version`, or reuses a trusted same-job `cli-path` returned by `/setup`.
+Use `/prepare` for project tools and offline caches; `/manage-pr`, `/select`, and `/publish` perform separate operations.
+The root exposes the complete workflow. `/release` remains a compatibility entry point, not a second implementation.
+For automatic setup, use root's [config-driven release operations](github-actions.md#config-driven-github-publication).
 For project-owned publication scripts, use the [root Action guide](github-actions.md#root-action-post-merge-commands).
 
 - [Requirements](#requirements)
@@ -33,7 +35,7 @@ Each Action sets up uv and installs a prebuilt changenote wheel from PyPI.
 
 ## Release PR workflow
 
-This two-job example uses the root Action for PR management and `/publish` for built-in tags and GitHub Releases.
+This two-job example uses `/manage-pr` for PR management and `/publish` for built-in tags and GitHub Releases.
 It does not use the project script inputs. Use the [command-hook workflow](../examples/github-actions/command-hooks.yml) when your project owns publication.
 Replace each SHA placeholder with a reviewed full commit SHA. The CLI and Action must use compatible release-plan formats.
 
@@ -61,7 +63,7 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: changenote/action@<full-action-commit-sha>
+      - uses: changenote/action/manage-pr@<full-action-commit-sha>
         with:
           base-branch: main
 
@@ -94,6 +96,8 @@ PRs created with the default `GITHUB_TOKEN` do not automatically trigger PR work
 
 ## Publication preview
 
+The `/select` and `/preview` Actions use the same implementation and output contract.
+Both return completed batches; `publication-needed` reports incomplete GitHub work independently of `release-commit` and `releases`.
 The preview Action requires Linux, Bash, Git, `gh`, `jq`, and standard coreutils. It installs the selected CLI wheel from PyPI through uv. It needs only `contents: read`. It reads the selected remote branch in a temporary repository; the caller's files, index, refs, tags, and Git identity are unchanged. A dirty or stale source checkout does not select the release. Temporary fetches and release-tree reconstruction are removed on success and failure.
 
 ```yaml
@@ -157,16 +161,21 @@ To retry custom scripts, re-run the original eligible workflow. A newer batch bl
 
 | Action | Input | Default |
 | --- | --- | --- |
-| All five Actions | `version` | `latest`; or an exact stable PyPI CLI version with a required `v` prefix |
+| All public Actions | `version` | `latest`; or an exact stable PyPI CLI version with a required `v` prefix |
 | Release PR, Publication, Preview | `github-token` | Workflow token |
 | Release PR, Publication, Preview | `base-branch` | Repository default branch |
 | Release PR | `commit-message` | `chore(release): version packages` |
 | Release PR | `pr-title` | `chore(release): version packages` |
 | Root | `publish-script`, `release-script` | Empty; no custom publication |
+| Root | `operation` | `hooks`; explicitly choose `auto` for built-in publication |
+| Root, `/release` | `prepare` | `true` for built-in operations; `false` uses caller-owned preparation |
+| Operation Actions | `cli-path` | Empty; or a trusted same-job `/setup` output |
 | Publication | `expected-release-commit` | Empty; retain latest-batch selection |
 
+The root and `/release` share the built-in outputs described in the [main guide](github-actions.md#outputs).
+In root's default `hooks` operation, `published` and `ready` remain false because script success does not inspect GitHub publication state.
 The root Action outputs `has-notes` (`true` or `false`), `pr-number` (number or empty string), and `pr-operation` (`created`, `updated`, `closed`, or `none`). `updated` includes a no-op version rerun that refreshes the PR metadata.
-It also returns `release-commit` and `releases` for a verified managed merge, independently of configured commands or GitHub publication state. No selected merge returns an empty commit and `[]`. Read these outputs only after success.
+In `hooks`, it also returns `release-commit` and `releases` for a verified managed merge, independently of configured commands or GitHub publication state. No selected merge returns an empty commit and `[]`. Read these outputs only after success.
 
 The publication Action accepts an optional `expected-release-commit`, a full lowercase 40-character commit SHA.
 A mismatch with the verified latest batch fails before remote tag or Release writes.

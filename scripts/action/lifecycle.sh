@@ -63,10 +63,7 @@ git -C "$root" config user.name 'github-actions[bot]'
 git -C "$root" config user.email '41898282+github-actions[bot]@users.noreply.github.com'
 git -C "$root" config core.hooksPath /dev/null
 # Re-fetch after reconstruction, immediately before any caller command.
-remote_git fetch --no-tags "$remote_url" "refs/heads/$base"
-base_sha=$(git rev-parse FETCH_HEAD)
-find_publication_batch
-[[ $release == "$selected" ]] || fail 'Release batch changed before command execution; re-run the selected release workflow.'
+require_unchanged_publication_batch
 
 run_command() {
   local name=$1 script_text=$2

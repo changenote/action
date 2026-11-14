@@ -137,11 +137,11 @@ class ReleaseAction(unittest.TestCase):
         self.assertEqual(out["published"], "false")
         self.assertEqual(out["pr-operation"], "none")
 
-    def test_completed_batch_is_selected_only_for_explicit_manual_retry(self):
+    def test_selection_returns_completed_batch_without_enabling_auto_republication(self):
         sha = self.f.release()
         self.f.action("publish")
-        for event, retry, selected in (("push", "false", False),
-                                       ("workflow_dispatch", "false", False),
+        for event, retry, selected in (("push", "false", True),
+                                       ("workflow_dispatch", "false", True),
                                        ("workflow_dispatch", "true", True)):
             with self.subTest(event=event, retry=retry):
                 _, out = self.select_readonly(event=event, retry=retry)
@@ -229,6 +229,43 @@ class ReleaseAction(unittest.TestCase):
         self.assertEqual(out["release-commit"], "")
         self.assertEqual(out["releases"], "[]")
 
+    def test_publish_rejects_a_new_batch_arriving_during_remote_inspection(self):
+        f = self.f
+        release = f.release()
+        f.note("Next batch", "next")
+        f.cli("version")
+        newer = f.commit("next release")
+        f.git("push", "origin", "HEAD:refs/heads/staged-batch")
+        f.env.update(RACE_REMOTE=str(f.remote), RACE_BATCH=newer)
+        gh = f.bin / "gh"
+        gh.write_text(
+            '#!/usr/bin/env bash\n'
+            'if [[ "$*" == *"/releases?"* ]]; then\n'
+            '  git --git-dir="$RACE_REMOTE" update-ref refs/heads/main "$RACE_BATCH"\n'
+            'fi\n'
+            'exec uv run --no-project python "$MOCK_GH_SCRIPT" "$@"\n'
+        )
+        gh.chmod(0o755)
+        result, out = self.run_release("publish", expected=release, ok=False)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("changed before publication", result.stderr)
+        self.assertEqual(out["published"], "false")
+        self.assertEqual(f.state()["releases"], [])
+        self.assertEqual(f.git("ls-remote", "--tags", "origin"), "")
+        self.assertEqual(f.git("tag", "--list"), "")
+
+    def test_root_hooks_dispatch_preserves_no_publication_default(self):
+        f = self.f
+        f.note()
+        f.env.update(INPUT_OPERATION="hooks", INPUT_GITHUB_TOKEN="test-token",
+                     GITHUB_EVENT_NAME="workflow_dispatch", GITHUB_REF="refs/heads/main")
+        _, out = f.action("release")
+        self.assertEqual(out["pr-operation"], "created")
+        self.assertEqual(out["published"], "false")
+        self.assertEqual(out["ready"], "false")
+        self.assertEqual(f.state()["releases"], [])
+        self.assertEqual(f.git("ls-remote", "--tags", "origin"), "")
+
     def test_selected_rust_toolchain_is_enforced_during_replay(self):
         sha = self.f.release()
         calls = self.f.top / "toolchain-calls"
@@ -248,6 +285,10 @@ class ReleaseAction(unittest.TestCase):
         baseline = self.f.env.copy()
         cases = [
             {"INPUT_OPERATION": "unknown"},
+            {"INPUT_OPERATION": "auto", "INPUT_PUBLISH_SCRIPT": "echo must-not-run"},
+            {"INPUT_OPERATION": "publish", "INPUT_EXPECTED_RELEASE_COMMIT": "a" * 40,
+             "INPUT_RELEASE_SCRIPT": "echo must-not-run"},
+            {"INPUT_PREPARE": "yes"},
             {"GITHUB_EVENT_NAME": "pull_request"},
             {"GITHUB_EVENT_NAME": "pull_request_target"},
             {"INPUT_OPERATION": "retry-publication"},

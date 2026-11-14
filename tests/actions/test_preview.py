@@ -65,7 +65,8 @@ class Preview(unittest.TestCase):
         (self.f.repo / "untracked").write_text("keep")
         _, out = self.preview()
         self.assertEqual(
-            out, {"ready": "true", "release-commit": "", "publication-plan": "[]", "releases": "[]"}
+            out, {"ready": "true", "release-commit": "", "publication-plan": "[]",
+                  "publication-needed": "false", "releases": "[]"}
         )
 
     def test_current_after_later_commit(self):

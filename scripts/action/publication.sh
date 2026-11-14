@@ -96,6 +96,15 @@ verify_publication_batch() {
   git reset --hard "$release"
 }
 
+# Recheck selection after replay and remote inspection, just before side effects.
+require_unchanged_publication_batch() {
+  local selected=$release
+  remote_git fetch --no-tags "$remote_url" "refs/heads/$base"
+  base_sha=$(git rev-parse FETCH_HEAD)
+  find_publication_batch
+  [[ $release == "$selected" ]] || fail 'Release batch changed before publication; select and validate it again.'
+}
+
 prepare_publication_notes() {
   [[ -n $release ]] || return 0
   # Validate every body before any remote writes, including later batch members.

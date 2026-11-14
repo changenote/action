@@ -1,14 +1,41 @@
-name: Changenote Release PR
-description: Manage version PRs and run optional publish and release scripts after a verified managed merge (Linux).
+name: Changenote
+description: Configure release PRs, verified project scripts, selection, and GitHub publication (Linux).
 inputs:
+  cli-path:
+    description: Trusted absolute CLI path returned by changenote/action/setup in this job. Empty installs version.
+    default: ''
   version:
     description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
     default: latest
+  operation:
+    description: hooks (default) manages PRs and runs scripts after a managed merge. auto, manage-pr, select, publish, and retry-publication provide built-in operations.
+    default: hooks
   github-token:
-    description: Token with contents and pull requests write permissions.
+    description: Token with contents read for select, contents write for publish, and contents and pull requests write for PR management.
     default: ${{ github.token }}
   base-branch:
-    description: Base branch. Defaults to the repository default branch.
+    description: Release branch. Defaults to the repository default branch.
+    default: ''
+  expected-release-commit:
+    description: Exact full commit SHA validated by external CI. Required for publish and rejected for other operations.
+    default: ''
+  retry:
+    description: Compatibility input for manual select. Completed batches are now always returned; use publication-needed to gate GitHub work.
+    default: 'false'
+  prepare:
+    description: Prepare project tools and offline caches for built-in operations. Set false after caller-owned preparation.
+    default: 'true'
+  node-version:
+    description: Node.js version for configured npm lockfiles.
+    default: 'lts/*'
+  npm-version:
+    description: Exact npm version. Empty uses the npm bundled with Node.js.
+    default: ''
+  rust-toolchain:
+    description: Rust toolchain for configured Cargo lockfiles; not needed for CLI installation.
+    default: stable
+  uv-version:
+    description: uv version for CLI installation and configured uv lockfiles. Empty uses setup-uv's default.
     default: ''
   commit-message:
     description: Release commit message.
@@ -17,48 +44,128 @@ inputs:
     description: Release PR title.
     default: 'chore(release): version packages'
   publish-script:
-    description: Optional Bash script to publish packages after a verified managed merge. Runs before release-script.
+    description: Optional trusted Bash script for operation=hooks. Runs before release-script at the verified managed merge.
     default: ''
   release-script:
-    description: Optional Bash script to create tags, assets, or GitHub Releases after successful publish-script, or directly when it is absent.
+    description: Optional trusted Bash script for operation=hooks. Runs after successful publish-script, or directly when absent.
     default: ''
 outputs:
+  release-commit:
+    description: Verified commit. select includes completed batches; auto selects pending work only.
+    value: ${{ steps.version.outputs.release-commit }}
+  releases:
+    description: JSON array of package, version, and tag for the selected batch.
+    value: ${{ steps.version.outputs.releases }}
+  published:
+    description: Whether this run created remote tags or GitHub Releases.
+    value: ${{ steps.version.outputs.published }}
+  published-packages:
+    description: JSON array of name and version changed by publication in this run.
+    value: ${{ steps.version.outputs.published-packages }}
+  publication-plan:
+    description: Inspected publication plan for select, auto, and retry-publication.
+    value: ${{ steps.version.outputs.publication-plan }}
+  publication-needed:
+    description: Whether inspection found incomplete GitHub publication work.
+    value: ${{ steps.version.outputs.publication-needed }}
+  ready:
+    description: Whether the requested inspection or publication completed without conflicts.
+    value: ${{ steps.version.outputs.ready }}
   has-notes:
-    description: Whether there are pending notes.
+    description: Whether PR management found pending notes.
     value: ${{ steps.version.outputs.has-notes }}
   pr-number:
-    description: Managed PR number, or an empty string.
+    description: Managed PR number, or empty.
     value: ${{ steps.version.outputs.pr-number }}
   pr-operation:
     description: created, updated, closed, or none.
     value: ${{ steps.version.outputs.pr-operation }}
-  release-commit:
-    description: Verified managed-merge commit, or empty when no batch is selected.
-    value: ${{ steps.version.outputs.release-commit }}
-  releases:
-    description: JSON array of package, version, and tag for the verified managed batch.
-    value: ${{ steps.version.outputs.releases }}
 runs:
   using: composite
   steps:
+    - name: Validate release inputs
+      id: inputs
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_OPERATION: ${{ inputs.operation }}
+        INPUT_PREPARE: ${{ inputs.prepare }}
+        INPUT_PUBLISH_SCRIPT: ${{ inputs.publish-script }}
+        INPUT_RELEASE_SCRIPT: ${{ inputs.release-script }}
+        INPUT_EXPECTED_RELEASE_COMMIT: ${{ inputs.expected-release-commit }}
+        INPUT_RETRY: ${{ inputs.retry }}
+        INPUT_NPM_VERSION: ${{ inputs.npm-version }}
+        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      run: bash "$ACTION_PATH/scripts/action/release.sh" validate
     - name: Set up uv
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       with:
         enable-cache: false
+        version: ${{ inputs.uv-version }}
     - name: Install changenote CLI
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_VERSION: ${{ inputs.version }}
+        INPUT_CLI_PATH: ${{ inputs.cli-path }}
       run: bash "$ACTION_PATH/scripts/action/install-cli.sh"
-    - id: version
+    - name: Discover release environments
+      if: inputs.operation != 'hooks' && inputs.prepare == 'true'
+      id: environment
       shell: bash
       env:
-        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_OPERATION: ${{ steps.inputs.outputs.operation }}
         INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
-        INPUT_COMMIT_MESSAGE: ${{ inputs.commit-message }}
-        INPUT_PR_TITLE: ${{ inputs.pr-title }}
+        INPUT_EXPECTED_RELEASE_COMMIT: ${{ inputs.expected-release-commit }}
+        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      run: bash "$ACTION_PATH/scripts/action/release-environment.sh" discover
+    - name: Set up Rust
+      if: steps.environment.outputs.cargo == 'true'
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      with:
+        toolchain: ${{ inputs.rust-toolchain }}
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      if: steps.environment.outputs.npm == 'true'
+      with:
+        node-version: ${{ inputs.node-version }}
+        package-manager-cache: false
+    - name: Install selected npm version
+      if: steps.environment.outputs.npm == 'true' && inputs.npm-version != ''
+      shell: bash
+      env:
+        INPUT_NPM_VERSION: ${{ inputs.npm-version }}
+      # zizmor: ignore[adhoc-packages] -- Exact npm-version is validated; lifecycle scripts are disabled.
+      run: npm install --global --ignore-scripts --no-audit --no-fund "npm@$INPUT_NPM_VERSION"
+    - name: Populate offline package caches
+      if: inputs.operation != 'hooks' && inputs.prepare == 'true'
+      id: warm
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_OPERATION: ${{ steps.inputs.outputs.operation }}
+        INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
+        INPUT_EXPECTED_RELEASE_COMMIT: ${{ inputs.expected-release-commit }}
+        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      run: bash "$ACTION_PATH/scripts/action/release-environment.sh" warm
+    - name: Run release operation
+      id: version
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_PUBLISH_SCRIPT: ${{ inputs.publish-script }}
         INPUT_RELEASE_SCRIPT: ${{ inputs.release-script }}
-        ACTION_PATH: ${{ github.action_path }}
-      run: bash "$ACTION_PATH/scripts/action/lifecycle.sh"
+        INPUT_PREPARE: ${{ inputs.prepare }}
+        INPUT_OPERATION: ${{ steps.inputs.outputs.operation }}
+        INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
+        INPUT_EXPECTED_RELEASE_COMMIT: ${{ inputs.expected-release-commit }}
+        INPUT_RETRY: ${{ inputs.retry }}
+        INPUT_NPM_VERSION: ${{ inputs.npm-version }}
+        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+        INPUT_COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        INPUT_PR_TITLE: ${{ inputs.pr-title }}
+        INPUT_PR_ENVIRONMENT_READY: ${{ steps.environment.outputs.pr-environment-ready != 'false' && steps.warm.outputs.pr-environment-ready != 'false' }}
+      run: bash "$ACTION_PATH/scripts/action/release.sh" run

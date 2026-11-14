@@ -1,6 +1,9 @@
 name: Changenote Publication Preview
 description: Inspect the latest validated batch without changing source Git state or publishing (Linux).
 inputs:
+  cli-path:
+    description: Trusted absolute CLI path returned by changenote/action/setup in this job. Empty installs version.
+    default: ''
   version:
     description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
     default: latest
@@ -20,6 +23,9 @@ outputs:
   ready:
     description: Whether complete inspection found no conflicts. False on errors.
     value: ${{ steps.preview.outputs.ready }}
+  publication-needed:
+    description: Whether inspection found incomplete GitHub publication work.
+    value: ${{ steps.preview.outputs.publication-needed }}
   publication-plan:
     description: JSON array of name, version, tag, action, and conflicts objects. Empty when no batch exists.
     value: ${{ steps.preview.outputs.publication-plan }}
@@ -27,6 +33,7 @@ runs:
   using: composite
   steps:
     - name: Set up uv
+      if: inputs.cli-path == ''
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       with:
         enable-cache: false
@@ -35,6 +42,7 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_VERSION: ${{ inputs.version }}
+        INPUT_CLI_PATH: ${{ inputs.cli-path }}
       run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
     - id: preview
       shell: bash

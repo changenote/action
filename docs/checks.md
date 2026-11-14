@@ -33,6 +33,7 @@ Branch names enter the shell through an environment variable, not inline express
 ## GitHub Action report
 
 Use the check Action after checkout. It sets up uv and installs a prebuilt changenote wheel from PyPI.
+When `/setup` already ran in the same job, pass its trusted `cli-path` to reuse that installation.
 Replace the Action placeholder with a reviewed full SHA.
 `version` defaults to `latest`, the latest stable PyPI CLI; use an exact version with the required `v` prefix for repeatable checks.
 

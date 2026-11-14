@@ -1,6 +1,9 @@
-name: Changenote Release
+name: Changenote Release (compatibility)
 description: Set up changenote and manage, select, or publish releases from package configuration (Linux).
 inputs:
+  cli-path:
+    description: Trusted absolute CLI path returned by changenote/action/setup in this job. Empty installs version.
+    default: ''
   version:
     description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
     default: latest
@@ -17,8 +20,11 @@ inputs:
     description: Exact full commit SHA validated by external CI. Required for publish and rejected for other operations.
     default: ''
   retry:
-    description: Include a completed batch in select for downstream retries. Only allowed on workflow_dispatch.
+    description: Compatibility input for manual select. Completed batches are now always returned; use publication-needed to gate GitHub work.
     default: 'false'
+  prepare:
+    description: Prepare project tools and offline caches. Set false after caller-owned preparation.
+    default: 'true'
   node-version:
     description: Node.js version for configured npm lockfiles.
     default: 'lts/*'
@@ -39,7 +45,7 @@ inputs:
     default: 'chore(release): version packages'
 outputs:
   release-commit:
-    description: Selected or published verified commit, or empty when no work is selected.
+    description: Verified commit. select includes completed batches; auto selects pending work only.
     value: ${{ steps.release.outputs.release-commit }}
   releases:
     description: JSON array of package, version, and tag for the selected batch.
@@ -77,12 +83,14 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_OPERATION: ${{ inputs.operation }}
+        INPUT_PREPARE: ${{ inputs.prepare }}
         INPUT_EXPECTED_RELEASE_COMMIT: ${{ inputs.expected-release-commit }}
         INPUT_RETRY: ${{ inputs.retry }}
         INPUT_NPM_VERSION: ${{ inputs.npm-version }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/../scripts/action/release.sh" validate
     - name: Set up uv
+      if: inputs.cli-path == '' || inputs.prepare == 'true'
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       with:
         enable-cache: false
@@ -92,8 +100,10 @@ runs:
       env:
         ACTION_PATH: ${{ github.action_path }}
         INPUT_VERSION: ${{ inputs.version }}
+        INPUT_CLI_PATH: ${{ inputs.cli-path }}
       run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
     - name: Discover release environments
+      if: inputs.prepare == 'true'
       id: environment
       shell: bash
       env:
@@ -109,7 +119,7 @@ runs:
       uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
       with:
         toolchain: ${{ inputs.rust-toolchain }}
-    - uses: actions/setup-node@v7
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
       if: steps.environment.outputs.npm == 'true'
       with:
         node-version: ${{ inputs.node-version }}
@@ -119,8 +129,10 @@ runs:
       shell: bash
       env:
         INPUT_NPM_VERSION: ${{ inputs.npm-version }}
+      # zizmor: ignore[adhoc-packages] -- Exact npm-version is validated; lifecycle scripts are disabled.
       run: npm install --global --ignore-scripts --no-audit --no-fund "npm@$INPUT_NPM_VERSION"
     - name: Populate offline package caches
+      if: inputs.prepare == 'true'
       id: warm
       shell: bash
       env:

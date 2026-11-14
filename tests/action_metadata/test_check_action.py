@@ -86,7 +86,7 @@ class CheckAction(unittest.TestCase):
     def test_metadata_and_consumer_path(self):
         self.assertEqual(self.metadata["runs"]["using"], "composite")
         inputs = self.metadata["inputs"]
-        self.assertEqual(set(inputs), {"version", "since", "coverage", "skip-release", "reason"})
+        self.assertEqual(set(inputs), {"version", "cli-path", "since", "coverage", "skip-release", "reason"})
         self.assertEqual(inputs["since"]["required"], "true")
         self.assertNotIn("default", inputs["since"])
         self.assertEqual(inputs["coverage"]["default"], "package")
@@ -95,7 +95,7 @@ class CheckAction(unittest.TestCase):
         self.assertEqual(step["env"]["ACTION_PATH"], "${{ github.action_path }}")
         self.assertNotIn("${{", step["run"])
         self.assertEqual(inputs["version"]["default"], "latest")
-        for key in set(inputs) - {"version"}:
+        for key in set(inputs) - {"version", "cli-path"}:
             self.assertEqual(step["env"]["INPUT_" + key.upper().replace("-", "_")], "${{ inputs." + key + " }}")
         result, outputs = self.run_action()
         self.assertEqual(result.returncode, 0, result.stderr + result.stdout)

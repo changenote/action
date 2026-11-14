@@ -19,6 +19,7 @@ class ReleaseMetadata(unittest.TestCase):
     def test_defaults_and_output_forwarding(self):
         self.assertEqual(self.action["runs"]["using"], "composite")
         defaults = {
+            "cli-path": "", "prepare": "true",
             "version": "latest", "operation": "auto", "github-token": "${{ github.token }}",
             "base-branch": "", "expected-release-commit": "", "retry": "false",
             "node-version": "lts/*", "npm-version": "", "rust-toolchain": "stable",
@@ -33,21 +34,21 @@ class ReleaseMetadata(unittest.TestCase):
         })
         for key, value in self.action["outputs"].items():
             self.assertEqual(value["value"], "${{ steps.release.outputs." + key + " }}")
-        # Built-in publication remains opt-in through /release. Root commands
-        # are independently opt-in and retain the original PR outputs.
+        # Root exposes the complete dispatcher but preserves its hooks default.
         root = yaml.load((ROOT / "action.yml").read_text(), Loader=yaml.BaseLoader)
-        self.assertEqual(set(root["outputs"]), {
-            "has-notes", "pr-number", "pr-operation", "release-commit", "releases",
-        })
+        self.assertEqual(set(root["outputs"]), set(self.action["outputs"]))
+        self.assertTrue(set(self.action["inputs"]).issubset(root["inputs"]))
+        self.assertEqual(root["inputs"]["operation"]["default"], "hooks")
         self.assertEqual(root["inputs"]["publish-script"]["default"], "")
         self.assertEqual(root["inputs"]["release-script"]["default"], "")
-        self.assertIn("lifecycle.sh", root["runs"]["steps"][-1]["run"])
+        self.assertIn("release.sh", root["runs"]["steps"][-1]["run"])
 
     def test_setup_order_and_selected_cli_installation(self):
         labels = [step.get("name", step.get("uses")) for step in self.steps]
         self.assertEqual(labels, [
             "Validate release inputs", "Set up uv", "Install changenote CLI",
-            "Discover release environments", "Set up Rust", "actions/setup-node@v7",
+            "Discover release environments", "Set up Rust",
+            "actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1",
             "Install selected npm version", "Populate offline package caches", "Run release operation",
         ])
         self.assertFalse(any(step.get("id") == "cache" for step in self.steps))
@@ -74,14 +75,14 @@ class ReleaseMetadata(unittest.TestCase):
         self.assertEqual(node["with"], {
             "node-version": "${{ inputs.node-version }}", "package-manager-cache": "false",
         })
-        self.assertNotIn("if", uv)
+        self.assertEqual(uv["if"], "inputs.cli-path == '' || inputs.prepare == 'true'")
         self.assertEqual(uv["with"], {"version": "${{ inputs.uv-version }}", "enable-cache": "false"})
         self.assertLess(self.steps.index(uv), self.steps.index(self.step("Install changenote CLI")))
         npm = self.step("Install selected npm version")
         self.assertEqual(npm["if"], "steps.environment.outputs.npm == 'true' && inputs.npm-version != ''")
         self.assertEqual(npm["env"], {"INPUT_NPM_VERSION": "${{ inputs.npm-version }}"})
         self.assertEqual(npm["run"], 'npm install --global --ignore-scripts --no-audit --no-fund "npm@$INPUT_NPM_VERSION"')
-        self.assertNotIn("if", self.step("Populate offline package caches"))
+        self.assertEqual(self.step("Populate offline package caches")["if"], "inputs.prepare == 'true'")
 
     def test_expressions_enter_shell_only_through_environment(self):
         for step in self.steps:

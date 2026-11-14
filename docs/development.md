@@ -5,8 +5,12 @@ The CLI and its crates.io and PyPI publication remain in [changenote/changenote]
 
 ## Repository layout
 
-- `action.yml`: root Action for release PRs and optional project publication scripts.
-- `release/action.yml`: CLI installation, package-manager setup, and built-in GitHub publication.
+- `action.yml`: complete root workflow; defaults to compatible managed-merge scripts and also exposes built-in operations.
+- `setup/action.yml`: CLI installation with same-job path and exact-version outputs.
+- `prepare/action.yml`: project tools and offline caches without PR or publication writes.
+- `manage-pr/action.yml`: release PR lifecycle only.
+- `select/action.yml`: verified batch identity and separate GitHub publication state.
+- `release/action.yml`: compatibility entry point for root's shared built-in operations.
 - `check/action.yml`: read-only PR note reports.
 - `preview/action.yml`: read-only publication inspection.
 - `publish/action.yml`: validated tag and GitHub Release publication.
@@ -20,7 +24,8 @@ The CLI and its crates.io and PyPI publication remain in [changenote/changenote]
 
 ## CLI installation
 
-All five public Actions accept `version` and install changenote from PyPI through uv.
+All public Actions accept `version`; standalone operations install changenote from PyPI through uv unless they receive a trusted same-job `cli-path`.
+`/setup` returns `cli-path` and the exact installed `version` for reuse without a second installation.
 The default `latest` selects the latest stable published CLI; the repository stores no CLI version or source-revision pin.
 Use an exact stable version with the required `v` prefix, such as `v0.9.2`, for repeatable runs.
 Bare versions, version ranges, URLs, Git revisions, and prereleases are rejected.
@@ -40,7 +45,7 @@ CI runs the shared installer with `INPUT_VERSION=latest` before the integration 
 Tests use the installed executable on `PATH`, not an Action-local Cargo build or a sibling repository.
 
 The Actions set up uv and install a prebuilt wheel into a new runner temporary tool environment.
-`/release` uses `uv-version` for CLI installation and configured uv lockfiles.
+Root, `/setup`, `/prepare`, and `/release` use `uv-version` for CLI installation and configured uv lockfiles.
 It sets up Rust with `rust-toolchain` only when configured Cargo lockfiles require it.
 The other Actions do not install Rust for the CLI.
 The installer runs outside the consumer checkout, removes GitHub token variables, and disables project configuration, source overrides, source builds, and prereleases.
@@ -93,7 +98,7 @@ CI validates the plan with the installed CLI.
 The first version PR generates `CHANGELOG.md` and `.changenote/releases.json`, updates `VERSION`, and consumes the initial note.
 Those generated files are not created by this setup change.
 
-The repository's Release workflow uses `./release` after checking out `${{ github.sha }}`.
+The repository's Release workflow uses the root `./` Action with an explicit operation after checking out `${{ github.sha }}`.
 This runs the Action from the same commit as the checkout, without a separate Action SHA update.
 It accepts the `version` input and defaults to `latest`, the latest stable published CLI.
 External Action dependencies remain pinned to full commit SHAs.
@@ -118,6 +123,21 @@ Adding or testing this setup does not authorize `changenote version`, `changenot
 To stop release automation, disable the workflow before recovery.
 Inspect remote publication state before a retry; never move existing tags or replace published artifacts automatically.
 For an unexpected CLI change with `latest`, select an exact version in the caller workflow.
+
+## Action composition verification
+
+Local composition validation passed 184 integration tests and 51 metadata tests on an isolated composition branch with a locally built CLI 0.12.1 wheel.
+The published PyPI 0.9.2 installer remains unchanged; that CLI does not support the existing Swift fixtures.
+The compatible local wheel is test evidence, not a source-build fallback or proof that compatible artifacts exist on PyPI.
+
+The nine public Action definitions pass offline zizmor checks.
+Exact npm tool installation has a per-step annotation because it intentionally installs the caller's validated tool version without a project lockfile; lifecycle scripts are disabled.
+The existing workflow-level Dependabot cooldown and self-repository syntax advisories also occur on the unchanged baseline.
+They are not silently treated as a clean workflow security scan.
+
+The example repository's new interfaces remain inactive templates until a maintainer publishes and reviews the new Action SHA.
+See [migration and production-pin requirements](migration.md#composable-action-interfaces).
+Hosted tools, token scopes, branch rules, and publication still need a separately authorized disposable-repository test.
 
 ## Verification limits
 

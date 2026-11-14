@@ -7,6 +7,7 @@ output ready false
 output release-commit ''
 output releases '[]'
 output publication-plan '[]'
+output publication-needed false
 setup_readonly
 verify_publication_batch
 prepare_publication_notes
@@ -19,6 +20,7 @@ inspect_publication
 output release-commit "$release"
 output releases "$(jq -c 'map({package, version, tag})' "$temp/batch.json")"
 output publication-plan "$(jq -c . "$temp/publication-plan.json")"
+output publication-needed "$(jq -r 'any(.[]; .action != "none")' "$temp/publication-plan.json")"
 output ready "$ready"
 printf 'Release commit: %s\n' "$release"
 jq -r '.[] | "\(.name)@\(.version): \(.action)", (.conflicts[] | "  " + .)' "$temp/publication-plan.json"

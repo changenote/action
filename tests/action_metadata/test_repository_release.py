@@ -47,7 +47,7 @@ class RepositoryRelease(unittest.TestCase):
         self.assertEqual(checkout["with"], {
             "ref": "${{ github.sha }}", "fetch-depth": "0", "persist-credentials": "false",
         })
-        self.assertEqual(action["uses"], "./release")
+        self.assertEqual(action["uses"], "./")
         self.assertEqual(action["with"], {
             "base-branch": "main", "operation": "${{ inputs.operation || 'auto' }}",
         })
