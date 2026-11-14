@@ -13,7 +13,7 @@ CLI = shutil.which("changenote")
 if CLI is None:
     raise RuntimeError("Install changenote with uv from PyPI and add it to PATH before running Action tests.")
 CLI = Path(CLI).resolve()
-BRANCH = "narumi/chore/changenote-release-main"
+BRANCH = "changenote-release/main"
 
 
 class Actions(unittest.TestCase):
@@ -228,6 +228,37 @@ class Actions(unittest.TestCase):
         _, outputs = self.action()
         self.assertEqual(outputs["pr-operation"], "closed")
         self.assertTrue(self.git("ls-remote", "origin", "refs/heads/" + BRANCH))
+
+    def test_release_branch_uses_selected_base_branch(self):
+        for base in ("main", "develop", "release/1.x"):
+            for explicit in (False, True):
+                with self.subTest(base=base, explicit=explicit):
+                    self.doCleanups()
+                    self.setUp()
+                    if base != "main":
+                        self.git("branch", "-m", base)
+                    self.git("push", "origin", base)
+                    self.env["GITHUB_REF"] = f"refs/heads/{base}"
+                    if explicit:
+                        self.env["INPUT_BASE_BRANCH"] = base
+                    else:
+                        self.set_state(default_branch=base)
+                    self.cli("add", "fix", "--package", "pkg", "--bump", "patch", "--message", "Fix")
+                    self.commit("note")
+                    self.git("push", "origin", base)
+                    _, outputs = self.action()
+                    branch = f"changenote-release/{base}"
+                    pr = self.state()["pulls"][0]
+                    self.assertEqual(outputs["pr-operation"], "created")
+                    self.assertEqual(pr["head"]["ref"], branch)
+                    self.assertEqual(pr["base"]["ref"], base)
+                    first = self.git("ls-remote", "origin", f"refs/heads/{branch}")
+                    self.assertTrue(first)
+                    _, outputs = self.action()
+                    self.assertEqual(outputs["pr-operation"], "updated")
+                    self.assertEqual(outputs["pr-number"], "1")
+                    self.assertEqual(len(self.state()["pulls"]), 1)
+                    self.assertEqual(first, self.git("ls-remote", "origin", f"refs/heads/{branch}"))
 
     def test_noop_refreshes_release_branch_after_note_rename(self):
         self.note()

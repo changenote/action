@@ -162,7 +162,12 @@ jobs:
           base-branch: main
 ```
 
-The Action fetches the current base branch, applies pending notes in a temporary worktree, and creates or updates one PR from `narumi/chore/changenote-release-<base-branch>`. Reserve that branch for automation. New notes update the same PR. A rerun creates no commit or push when the release branch includes the current base commit and its generated tree is unchanged. If notes are removed, the Action closes only its managed PR and leaves the branch in place. A manually closed PR is replaced when notes remain.
+The Action fetches the current base branch, applies pending notes in a temporary worktree, and creates or updates one PR from `changenote-release/<base-branch>`.
+The suffix is the selected `base-branch`, or the repository default branch when that input is empty.
+For example, `main` uses `changenote-release/main`, and `release/1.x` uses `changenote-release/release/1.x`.
+Reserve that branch for automation. See [branch migration](migration.md#release-pr-branch-names) before upgrading from the previous naming format.
+
+New notes update the same PR. A rerun creates no commit or push when the release branch includes the current base commit and its generated tree is unchanged. If notes are removed, the Action closes only its managed PR and leaves the branch in place. A manually closed PR is replaced when notes remain.
 
 `pr-draft` is available on root and `/manage-pr`:
 

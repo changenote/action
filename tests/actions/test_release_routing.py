@@ -135,6 +135,16 @@ class ReleaseRouting(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(values["publish"], "true")
 
+    def test_previous_managed_branch_remains_valid_during_cutover(self):
+        release = self.fixture.release()
+        pr = self.managed(release)
+        pr["head"]["ref"] = "narumi/chore/changenote-release-main"
+        self.associate(release, [pr])
+        result, values = self.classify()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(values["publish"], "true")
+        self.assertEqual(values["release-commit"], release)
+
     def test_newer_remote_batch_blocks_stale_preview(self):
         release = self.fixture.release()
         self.fixture.note("second release", "second")
@@ -266,16 +276,18 @@ class ReleaseRouting(unittest.TestCase):
     def test_non_main_base_is_used_for_ref_and_managed_pr_identity(self):
         release = self.fixture.release()
         pr = self.managed(release)
-        pr["base"]["ref"] = "stable"
-        pr["head"]["ref"] = "narumi/chore/changenote-release-stable"
-        self.associate(release, [pr])
         event = dict(before=self.before, after=release, forced=False, deleted=False)
         original = routing.command
-        with patch.object(routing, "command", side_effect=lambda *args: self.fixture.run_cmd(list(args)).stdout.strip()):
-            result = routing.route("push", event, "test/repo", "refs/heads/stable", "stable")
-        self.assertEqual(result["release-commit"], release)
-        self.assertEqual(result["publish"], "true")
-        self.assertEqual(routing.command, original)
+        for base in ("stable", "release/1.x"):
+            with self.subTest(base=base):
+                pr["base"]["ref"] = base
+                pr["head"]["ref"] = f"changenote-release/{base}"
+                self.associate(release, [pr])
+                with patch.object(routing, "command", side_effect=lambda *args: self.fixture.run_cmd(list(args)).stdout.strip()):
+                    result = routing.route("push", event, "test/repo", f"refs/heads/{base}", base)
+                self.assertEqual(result["release-commit"], release)
+                self.assertEqual(result["publish"], "true")
+                self.assertEqual(routing.command, original)
 
     def test_preview_check_for_queued_runs_and_manual_no_batch(self):
         routing.check_preview("old", "old", "true")
