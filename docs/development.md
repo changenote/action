@@ -93,10 +93,10 @@ CI validates the plan with the installed CLI.
 The first version PR generates `CHANGELOG.md` and `.changenote/releases.json`, updates `VERSION`, and consumes the initial note.
 Those generated files are not created by this setup change.
 
-The repository's Release workflow pins a full SHA of `changenote/action/release` that installs the CLI from PyPI.
+The repository's Release workflow uses `./release` after checking out `${{ github.sha }}`.
+This runs the Action from the same commit as the checkout, without a separate Action SHA update.
 It accepts the `version` input and defaults to `latest`, the latest stable published CLI.
-Update the workflow's Action SHA separately after reviewing a newer implementation.
-Do not invent a new SHA or change to an unpinned branch as a shortcut.
+External Action dependencies remain pinned to full commit SHAs.
 
 On pushes to `main`, `auto` manages the version PR and publishes incomplete validated batches.
 Merge the version PR only after review; the following main push publishes its `v<version>` tag and GitHub Release.

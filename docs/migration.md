@@ -42,7 +42,8 @@ Registry versions can differ; see [Published CLI compatibility](development.md#p
 See [Development](development.md#cli-installation) for local setup.
 
 Existing full-SHA references still execute their historical setup, including its old CLI pin.
-The repository's own Release workflow now pins the PyPI-based implementation, which supports `version`.
+The repository's own Release workflow uses `./release` from its `${{ github.sha }}` checkout.
+This local implementation installs the CLI from PyPI and supports `version`.
 Do not add the new `version` input to an old implementation that does not support it.
 
 ## Production cutover

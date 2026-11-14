@@ -33,7 +33,7 @@ jobs:
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
-      - uses: changenote/action/release@6815841068f1b547cb3142b198173a405552f157
+      - uses: ./release
         with:
           base-branch: main
           operation: ${{ inputs.operation || 'auto' }}

@@ -41,25 +41,25 @@ class RepositoryRelease(unittest.TestCase):
             "group": "changenote-action-release-main", "cancel-in-progress": "false",
         })
 
-    def test_release_uses_the_pinned_public_action_without_custom_publication(self):
+    def test_release_uses_the_checked_out_action_without_custom_publication(self):
         checkout, action = self.job["steps"]
         self.assertRegex(checkout["uses"], r"^actions/checkout@[0-9a-f]{40}$")
         self.assertEqual(checkout["with"], {
             "ref": "${{ github.sha }}", "fetch-depth": "0", "persist-credentials": "false",
         })
-        self.assertRegex(action["uses"], r"^changenote/action/release@[0-9a-f]{40}$")
+        self.assertEqual(action["uses"], "./release")
         self.assertEqual(action["with"], {
             "base-branch": "main", "operation": "${{ inputs.operation || 'auto' }}",
         })
-        metadata = read_yaml(ROOT / "release/action.yml")
+        metadata = read_yaml(ROOT / action["uses"] / "action.yml")
         self.assertTrue(set(action["with"]).issubset(metadata["inputs"]))
         self.assertTrue(all("run" not in step for step in self.job["steps"]))
 
-    def test_all_repository_workflow_dependencies_have_full_sha_pins(self):
+    def test_remote_repository_workflow_dependencies_have_full_sha_pins(self):
         for path in (ROOT / ".github/workflows").glob("*.yml"):
             for job in read_yaml(path)["jobs"].values():
                 for step in job.get("steps", []):
-                    if "uses" in step:
+                    if "uses" in step and not step["uses"].startswith("./"):
                         with self.subTest(workflow=path.name, action=step["uses"]):
                             self.assertRegex(step["uses"], r"^[^@\s]+@[0-9a-f]{40}$")
 
