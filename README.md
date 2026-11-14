@@ -49,10 +49,12 @@ The root Action runs project publication scripts only when explicitly configured
 - [Lower-level reference](docs/github-actions-reference.md): caller-installed CLI, PR management, preview, and publication.
 - [PR note checks](docs/checks.md): read-only contributor checks.
 - [Example workflows](examples/github-actions/): release, project scripts, and external CI.
-- [Development](docs/development.md): trusted CLI pin and local checks.
+- [Development](docs/development.md): trusted CLI pin, independent Action releases, and local checks.
 - [Repository migration](docs/migration.md): publication order, new SHA selection, and verification limits.
 
 The CLI source and its crates.io and PyPI publication remain in [changenote/changenote](https://github.com/changenote/changenote).
-The CLI and Actions share the same release version. Their commit SHAs are separate.
+The Action has its own version in `VERSION`; its first planned release is `v0.0.1`.
+The CLI version and source revision are pinned separately in `cli-source.env`.
+See [Action releases](docs/development.md#action-releases) for this repository's release workflow.
 
 The project uses the [MIT license](LICENSE).

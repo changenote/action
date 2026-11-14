@@ -1,0 +1,39 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Manage the release PR or retry publication
+        type: choice
+        default: manage-pr
+        options:
+          - manage-pr
+          - retry-publication
+
+permissions:
+  contents: read
+
+concurrency:
+  group: changenote-action-release-main
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: changenote/action/release@4b2d07126b8a4da4b44aa5fb8256dd81a69e2e3a
+        with:
+          base-branch: main
+          operation: ${{ inputs.operation || 'auto' }}
