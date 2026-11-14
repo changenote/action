@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
 env:
+  CHANGENOTE_CLI_VERSION: 'v0.9.2'
   CHANGENOTE_NODE_VERSION: '26.11.1'
   CHANGENOTE_NPM_VERSION: '11.20.0'
 jobs:
@@ -20,21 +21,29 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       release-commit: ${{ steps.select.outputs.release-commit }}
+      publication-needed: ${{ steps.select.outputs.publication-needed }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: changenote/action/release@<full-action-commit-sha>
-        id: select
+      - uses: changenote/action/setup@<full-action-commit-sha>
+        id: cli
         with:
+          version: ${{ env.CHANGENOTE_CLI_VERSION }}
+      - uses: changenote/action/prepare@<full-action-commit-sha>
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
           operation: select
-          retry: ${{ github.event_name == 'workflow_dispatch' && inputs.operation == 'retry-publication' }}
           node-version: ${{ env.CHANGENOTE_NODE_VERSION }}
           npm-version: ${{ env.CHANGENOTE_NPM_VERSION }}
+      - uses: changenote/action/select@<full-action-commit-sha>
+        id: select
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
 
   validate:
     needs: select
-    if: needs.select.outputs.release-commit != ''
+    if: needs.select.outputs.release-commit != '' && (needs.select.outputs.publication-needed == 'true' || (github.event_name == 'workflow_dispatch' && inputs.operation == 'retry-publication'))
     permissions:
       contents: read
       actions: read
@@ -55,11 +64,19 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: changenote/action/release@<full-action-commit-sha>
+      - uses: changenote/action/setup@<full-action-commit-sha>
+        id: cli
         with:
+          version: ${{ env.CHANGENOTE_CLI_VERSION }}
+      - uses: changenote/action/prepare@<full-action-commit-sha>
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
           operation: manage-pr
           node-version: ${{ env.CHANGENOTE_NODE_VERSION }}
           npm-version: ${{ env.CHANGENOTE_NPM_VERSION }}
+      - uses: changenote/action/manage-pr@<full-action-commit-sha>
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
           commit-message: 'chore(release): version Logice'
           pr-title: 'chore(release): version Logice'
 
@@ -81,13 +98,22 @@ jobs:
         with:
           ref: ${{ needs.select.outputs.release-commit }}
           persist-credentials: false
-      - uses: changenote/action/release@<full-action-commit-sha>
-        id: publish
+      - uses: changenote/action/setup@<full-action-commit-sha>
+        id: cli
         with:
+          version: ${{ env.CHANGENOTE_CLI_VERSION }}
+      - uses: changenote/action/prepare@<full-action-commit-sha>
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
           operation: publish
           expected-release-commit: ${{ needs.select.outputs.release-commit }}
           node-version: ${{ env.CHANGENOTE_NODE_VERSION }}
           npm-version: ${{ env.CHANGENOTE_NPM_VERSION }}
+      - uses: changenote/action/publish@<full-action-commit-sha>
+        id: publish
+        with:
+          cli-path: ${{ steps.cli.outputs.cli-path }}
+          expected-release-commit: ${{ needs.select.outputs.release-commit }}
 
   docker:
     needs: publish

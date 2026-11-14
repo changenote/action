@@ -1,0 +1,62 @@
+name: Changenote Manage PR
+description: Create, update, or close the managed Release PR without publishing (Linux).
+inputs:
+  cli-path:
+    description: Trusted absolute CLI path returned by changenote/action/setup in this job. Empty installs version.
+    default: ''
+  version:
+    description: PyPI CLI version, latest or an exact stable version with a v prefix.
+    default: latest
+  github-token:
+    description: Token with contents and pull requests write permissions.
+    default: ${{ github.token }}
+  base-branch:
+    description: Base branch. Defaults to the repository default branch.
+    default: ''
+  commit-message:
+    description: Release commit message.
+    default: 'chore(release): version packages'
+  pr-title:
+    description: Release PR title.
+    default: 'chore(release): version packages'
+outputs:
+  has-notes:
+    description: Whether there are pending notes.
+    value: ${{ steps.version.outputs.has-notes }}
+  pr-number:
+    description: Managed PR number, or empty.
+    value: ${{ steps.version.outputs.pr-number }}
+  pr-operation:
+    description: created, updated, closed, or none.
+    value: ${{ steps.version.outputs.pr-operation }}
+runs:
+  using: composite
+  steps:
+    - name: Validate PR operation
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_OPERATION: manage-pr
+      run: bash "$ACTION_PATH/../scripts/action/release.sh" validate
+    - name: Set up uv
+      if: inputs.cli-path == ''
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      with:
+        enable-cache: false
+    - name: Install changenote CLI
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_CLI_PATH: ${{ inputs.cli-path }}
+      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
+    - name: Manage release PR
+      id: version
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
+        INPUT_COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        INPUT_PR_TITLE: ${{ inputs.pr-title }}
+      run: bash "$ACTION_PATH/../scripts/action/version.sh"

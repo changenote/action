@@ -28,10 +28,11 @@ See [Action releases](development.md#action-releases) for version PRs and public
 
 ## CLI version selection
 
-All five Actions now install a changenote wheel from PyPI through uv.
+All standalone operation Actions can install a changenote wheel from PyPI through uv.
 `version` defaults to `latest`, the latest stable PyPI release; exact stable versions require a `v` prefix, such as `v0.9.2`.
 The Action repository no longer stores a CLI source pin.
-Remove separate CLI installation steps from caller workflows after adopting this implementation.
+A standalone operation needs no separate CLI installation.
+To reuse one installation within a job, use `/setup` and pass its trusted `cli-path` to subsequent Actions.
 Use the same exact `version` across release jobs when repeatable replay is required.
 
 Installation uses an isolated runner temporary tool environment, with source builds and project configuration disabled.
@@ -46,6 +47,26 @@ The repository's own Release workflow uses `./release` from its `${{ github.sha 
 This local implementation installs the CLI from PyPI and supports `version`.
 Do not add the new `version` input to an old implementation that does not support it.
 
+## Composable Action interfaces
+
+The root now exposes built-in operations as well as its existing scripts.
+Its default `operation: hooks` preserves existing root publication behavior.
+Select `auto` explicitly to enable built-in GitHub publication.
+The `/release` compatibility entry point retains its `auto` default and uses the same dispatcher.
+Nonempty root script inputs require `hooks`; other operations reject them.
+
+Use `/setup`, `/prepare`, `/manage-pr`, `/select`, and `/publish` for separate stages.
+The `/preview` compatibility name uses the same inspection as `/select`.
+Selection, including `/release operation: select`, now returns completed batches without a retry flag.
+Before updating a workflow that gates execution on a nonempty commit, add an explicit `publication-needed` check for automatic GitHub work.
+Keep manual downstream retries explicit and inspect registry state separately.
+
+The new paths need a reviewed published Action SHA.
+Do not apply new inputs to the example repository's older production pin.
+The inactive templates in `changenote/example/examples/actions/` show the new root and composed workflows.
+A maintainer must publish and review the new Action revision, replace each template placeholder, validate hosted behavior, and then update the active workflow.
+Local edits and tests do not authorize that deployment.
+
 ## Production cutover
 
 Creating migration branches and pull requests does not approve a release, tag creation, or registry upload.
@@ -57,7 +78,7 @@ Do not use an unpinned `@main` Action reference.
 1. Review and publish the new `changenote/action` repository **first**, with separate maintainer authorization.
    - Do not run the CLI's production release workflow against unpublished Action paths.
 2. Obtain and review the new Action commit's actual full SHA after publication.
-   - Confirm that all five entry points and the shared CLI installer are present.
+   - Confirm that the required entry points and shared CLI installer are present.
    - Do not invent a SHA or reuse a SHA from the old repository.
 3. Replace the CLI workflow's pre-migration Action references with `changenote/action@<new-sha>`, `changenote/action/preview@<new-sha>`, and `changenote/action/publish@<new-sha>`.
    - Use the same reviewed new Action revision for all three steps, and update the workflow contract tests.

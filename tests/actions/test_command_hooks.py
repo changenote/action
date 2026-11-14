@@ -316,7 +316,7 @@ exec "$REAL_GIT" "$@"
         self.f.env.update(REAL_GIT=real_git, FETCH_COUNT=str(counter),
                           HOOK_REMOTE=str(self.f.remote), NEWER_COMMIT=newer)
         result, _ = self.run_hooks('echo unexpected >> "$CALLS"', after=sha, ok=False)
-        self.assertIn("changed before command execution", result.stderr)
+        self.assertIn("changed before publication", result.stderr)
         self.assertEqual(self.lines(), [])
 
     def test_metadata_covers_the_whole_batch_not_one_command_per_package(self):

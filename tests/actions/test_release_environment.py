@@ -201,6 +201,37 @@ class ReleaseEnvironment(unittest.TestCase):
         self.assertEqual(outputs["release-commit"], release)
         self.assertEqual(outputs["pr-operation"], "none")
 
+    def test_publication_preparation_excludes_retained_notes_for_other_packages(self):
+        f = self.fixture
+        web = f.repo / "web"
+        web.mkdir()
+        (web / "package.json").write_text('{"name":"web","version":"1.0.0"}\n')
+        (web / "package-lock.json").write_text('{"lockfileVersion":3}\n')
+        self.configure({"packages": {
+            "pkg": {"path": ".", "version_file": "VERSION"},
+            "web": {"path": "web", "version_file": "package.json"},
+        }})
+        self.save()
+        f.note()
+        f.git("checkout", "-b", "prepared-release")
+        f.cli("version")
+        release_head = f.commit("release pkg only")
+        f.git("checkout", "main")
+        f.cli("add", "later-web", "--package", "web", "--bump", "patch",
+              "-m", "Keep for the next release")
+        self.save()
+        f.git("merge", "--no-ff", release_head, "-m", "merge prepared release")
+        f.git("push", "origin", "main")
+        self.assertEqual([item["package"] for item in json.loads(
+            (f.repo / ".changenote/releases.json").read_text())], ["pkg"])
+        self.stub("npm", fail=True)
+        f.env["INPUT_OPERATION"] = "select"
+        _, tools = self.run_environment()
+        self.assertEqual(tools["npm"], "false")
+        self.run_environment("warm")
+        self.assertFalse(self.calls.exists())
+        self.assertTrue((f.repo / ".changenote/later-web.md").is_file())
+
     def test_cache_failure_leaves_consumer_unchanged(self):
         self.npm_output()
         self.stub("npm", fail=True)

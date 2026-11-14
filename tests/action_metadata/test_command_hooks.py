@@ -15,14 +15,17 @@ class CommandHookMetadata(unittest.TestCase):
     def test_only_two_optional_commands_extend_the_existing_inputs(self):
         self.assertEqual(set(self.action["inputs"]), {
             "version", "github-token", "base-branch", "commit-message", "pr-title",
-            "publish-script", "release-script",
+            "publish-script", "release-script", "cli-path", "operation", "prepare",
+            "expected-release-commit", "retry", "node-version", "npm-version",
+            "rust-toolchain", "uv-version",
         })
         for key in ("publish-script", "release-script"):
             self.assertEqual(self.action["inputs"][key]["default"], "")
         self.assertEqual(set(self.action["outputs"]), {
             "has-notes", "pr-number", "pr-operation", "release-commit", "releases",
+            "published", "published-packages", "publication-plan", "publication-needed", "ready",
         })
-        self.assertNotIn("published", self.action["outputs"])
+        self.assertEqual(self.action["inputs"]["operation"]["default"], "hooks")
 
     def test_command_and_token_inputs_are_environment_data(self):
         step = next(s for s in self.action["runs"]["steps"] if s.get("id") == "version")
@@ -31,16 +34,19 @@ class CommandHookMetadata(unittest.TestCase):
         for key in ("publish-script", "release-script", "github-token"):
             env = "INPUT_" + key.upper().replace("-", "_")
             self.assertEqual(step["env"][env], "${{ inputs." + key + " }}")
-        self.assertIn('"$ACTION_PATH/scripts/action/lifecycle.sh"', step["run"])
+        self.assertIn('"$ACTION_PATH/scripts/action/release.sh"', step["run"])
 
     def test_router_tool_setup_is_pinned_and_does_not_build_a_consumer_cli(self):
         steps = self.action["runs"]["steps"]
-        self.assertEqual(len(steps), 3)
-        self.assertRegex(steps[0]["uses"], r"^astral-sh/setup-uv@[0-9a-f]{40}$")
-        self.assertEqual(steps[0]["with"]["enable-cache"], "false")
+        uv = next(step for step in steps if step.get("uses", "").startswith("astral-sh/setup-uv@"))
+        self.assertRegex(uv["uses"], r"^astral-sh/setup-uv@[0-9a-f]{40}$")
+        self.assertEqual(uv["with"]["enable-cache"], "false")
+        for name in ("Discover release environments", "Populate offline package caches"):
+            step = next(step for step in steps if step.get("name") == name)
+            self.assertIn("inputs.operation != 'hooks'", step["if"])
         text = (ROOT / "action.yml").read_text()
         self.assertNotIn("cargo install", text)
-        self.assertNotIn("npm install", text)
+        self.assertIn("npm install --global --ignore-scripts", text)
         self.assertNotIn("python-version", text)
 
     def test_hook_example_uses_public_root_and_safe_defaults(self):

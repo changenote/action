@@ -40,12 +40,15 @@ class Metadata(unittest.TestCase):
     def test_dependabot_only_tracks_action_dependencies(self):
         updates = read_yaml(ROOT / ".github/dependabot.yml")["updates"]
         self.assertEqual([update["package-ecosystem"] for update in updates], ["github-actions"])
-        self.assertGreaterEqual(int(updates[0]["cooldown"]["default-days"]), 7)
+        self.assertEqual(updates[0]["directory"], "/")
+        self.assertEqual(updates[0]["schedule"]["interval"], "weekly")
 
     def test_all_public_actions_install_the_requested_cli_before_use(self):
         for path, operation in (("action.yml", "version"), ("release/action.yml", "release"),
                                 ("check/action.yml", "check"), ("preview/action.yml", "preview"),
-                                ("publish/action.yml", "publish")):
+                                ("publish/action.yml", "publish"), ("setup/action.yml", "install"),
+                                ("prepare/action.yml", "warm"), ("manage-pr/action.yml", "version"),
+                                ("select/action.yml", "select")):
             with self.subTest(action=path):
                 metadata = read_yaml(ROOT / path)
                 self.assertEqual(metadata["inputs"]["version"]["default"], "latest")
@@ -61,10 +64,15 @@ class Metadata(unittest.TestCase):
                 run = next(step for step in steps if step.get("id") == operation)
                 uv = next(step for step in steps if step.get("uses", "").startswith("astral-sh/setup-uv@"))
                 self.assertRegex(uv["uses"], r"^astral-sh/setup-uv@[0-9a-f]{40}$")
-                self.assertNotIn("if", uv)
+                if path in ("check/action.yml", "preview/action.yml", "publish/action.yml",
+                            "manage-pr/action.yml", "select/action.yml"):
+                    self.assertEqual(uv["if"], "inputs.cli-path == ''")
                 self.assertLess(steps.index(uv), steps.index(install))
-                self.assertLess(steps.index(install), steps.index(run))
-                if path != "release/action.yml":
+                if path == "setup/action.yml":
+                    self.assertEqual(install, run)
+                else:
+                    self.assertLess(steps.index(install), steps.index(run))
+                if path not in ("action.yml", "release/action.yml", "prepare/action.yml"):
                     self.assertFalse(any(step.get("uses", "").startswith("dtolnay/") for step in steps))
 
     def test_inputs_outputs_and_composite_paths(self):
@@ -75,7 +83,18 @@ class Metadata(unittest.TestCase):
             (
                 ROOT / "action.yml",
                 "version",
-                {"has-notes", "pr-number", "pr-operation", "release-commit", "releases"},
+                {"has-notes", "pr-number", "pr-operation", "release-commit", "releases",
+                 "published", "published-packages", "publication-plan", "publication-needed", "ready"},
+            ),
+            (
+                ROOT / "manage-pr/action.yml",
+                "version",
+                {"has-notes", "pr-number", "pr-operation"},
+            ),
+            (
+                ROOT / "select/action.yml",
+                "select",
+                {"release-commit", "releases", "ready", "publication-plan", "publication-needed"},
             ),
             (
                 ROOT / "publish/action.yml",
@@ -85,7 +104,7 @@ class Metadata(unittest.TestCase):
             (
                 ROOT / "preview/action.yml",
                 "preview",
-                {"release-commit", "releases", "ready", "publication-plan"},
+                {"release-commit", "releases", "ready", "publication-plan", "publication-needed"},
             ),
         ):
             metadata = read_yaml(action)
@@ -107,7 +126,7 @@ class Metadata(unittest.TestCase):
             self.assertEqual(run["id"], step)
             self.assertEqual(run["shell"], "bash")
             self.assertEqual(run["env"]["ACTION_PATH"], "${{ github.action_path }}")
-            token_key = "INPUT_GITHUB_TOKEN" if step == "version" else "GH_TOKEN"
+            token_key = "INPUT_GITHUB_TOKEN" if action == ROOT / "action.yml" else "GH_TOKEN"
             self.assertEqual(run["env"][token_key], "${{ inputs.github-token }}")
             if step == "version":
                 fixture.env["INPUT_GITHUB_TOKEN"] = "test-token"
@@ -143,7 +162,7 @@ class Metadata(unittest.TestCase):
     def test_documented_examples_and_contracts(self):
         guide = "\n".join(
             (ROOT / path).read_text()
-            for path in ("docs/checks.md", "docs/github-actions-reference.md")
+            for path in ("docs/checks.md", "docs/github-actions-reference.md", "docs/github-actions.md")
         )
         blocks = re.findall(r"```yaml\n(.*?)```", guide, re.DOTALL)
         examples = [yaml.load(block, Loader=yaml.BaseLoader) for block in blocks]
@@ -169,7 +188,7 @@ class Metadata(unittest.TestCase):
         )
         self.assertEqual(
             workflow["jobs"]["release"]["steps"][-1]["uses"],
-            "changenote/action@<full-action-commit-sha>",
+            "changenote/action/manage-pr@<full-action-commit-sha>",
         )
         self.assertEqual(
             workflow["jobs"]["publish"]["steps"][-1]["uses"],

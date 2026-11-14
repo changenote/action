@@ -56,7 +56,7 @@ class ReleaseSetup(unittest.TestCase):
                         GITHUB_TOKEN="must-not-leak", INPUT_GITHUB_TOKEN="must-not-leak",
                         UV_TOOL_DIR=str(self.top / "unused tools"),
                         UV_TOOL_BIN_DIR=str(self.top / "unused bin"))
-        for key in ("INPUT_VERSION", "REPORTED_VERSION", "MODE"):
+        for key in ("INPUT_VERSION", "INPUT_CLI_PATH", "REPORTED_VERSION", "MODE"):
             self.env.pop(key, None)
 
     def run_setup(self, ok=True):
@@ -145,6 +145,41 @@ class ReleaseSetup(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("stay inside its tool environment", result.stderr)
         self.assertEqual(self.path_file.read_text(), "")
+
+    def test_setup_outputs_allow_reuse_without_installation_or_runner_temp(self):
+        output = self.top / "outputs"
+        self.env["GITHUB_OUTPUT"] = str(output)
+        self.env["INPUT_VERSION"] = "v9.8.7"
+        self.run_setup()
+        values = dict(line.split("=", 1) for line in output.read_text().splitlines())
+        self.assertEqual(values["version"], "v9.8.7")
+        self.env["INPUT_CLI_PATH"] = values["cli-path"]
+        self.env.pop("RUNNER_TEMP")
+        self.calls.unlink()
+        self.path_file.write_text("")
+        self.run_setup()
+        self.assertFalse(self.calls.exists())
+        self.assertEqual(self.path_file.read_text().strip(),
+                         str(Path(values["cli-path"]).parent))
+
+    def test_reuse_validates_the_requested_version_and_path_before_activation(self):
+        self.run_setup()
+        binary = Path(self.path_file.read_text().strip()) / "changenote"
+        self.path_file.write_text("")
+        self.calls.unlink()
+        for path, version in (
+            (str(binary), "v1.0.0"),
+            ("relative/changenote", "latest"),
+            ("/tmp/ambiguous:path/changenote", "latest"),
+            (str(binary) + "\nother", "latest"),
+            (str(binary.parent / "missing"), "latest"),
+        ):
+            with self.subTest(path=path, version=version):
+                self.env.update(INPUT_CLI_PATH=path, INPUT_VERSION=version)
+                result = self.run_setup(ok=False)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertFalse(self.calls.exists())
+                self.assertEqual(self.path_file.read_text(), "")
 
     def test_mismatched_and_invalid_versions_are_not_activated(self):
         self.env["INPUT_VERSION"] = "v9.8.7"

@@ -15,12 +15,16 @@ validate_inputs() {
     auto)
       if [[ $GITHUB_EVENT_NAME == workflow_dispatch ]]; then operation=manage-pr; fi
       ;;
-    manage-pr|select|publish) ;;
+    hooks|manage-pr|select|publish) ;;
     retry-publication)
       [[ $GITHUB_EVENT_NAME == workflow_dispatch ]] || fail 'retry-publication requires workflow_dispatch.'
       ;;
-    *) fail 'operation must be auto, manage-pr, select, publish, or retry-publication.' ;;
+    *) fail 'operation must be hooks, auto, manage-pr, select, publish, or retry-publication.' ;;
   esac
+  [[ ${INPUT_PREPARE:-true} == false || ${INPUT_PREPARE:-true} == true ]] || fail 'prepare must be true or false.'
+  if [[ $operation != hooks && ( ${INPUT_PUBLISH_SCRIPT:-} =~ [^[:space:]] || ${INPUT_RELEASE_SCRIPT:-} =~ [^[:space:]] ) ]]; then
+    fail 'Custom scripts require operation=hooks. Use separate Actions for external CI and built-in publication.'
+  fi
   [[ ${INPUT_RETRY:-false} == false || ${INPUT_RETRY:-false} == true ]] || fail 'retry must be true or false.'
   if [[ ${INPUT_RETRY:-false} == true ]]; then
     [[ $operation == select && $GITHUB_EVENT_NAME == workflow_dispatch ]] || fail 'retry=true requires select on workflow_dispatch.'
@@ -45,6 +49,15 @@ if [[ ${1:-run} == validate ]]; then
 fi
 [[ ${1:-run} == run ]] || fail 'Unknown high-level Action entry point.'
 scripts=$(cd -- "${BASH_SOURCE[0]%/*}" && pwd)
+if [[ $operation == hooks ]]; then
+  output published false
+  output published-packages '[]'
+  output publication-plan '[]'
+  output publication-needed false
+  output ready false
+  exec bash "$scripts/lifecycle.sh"
+fi
+if [[ -n ${INPUT_GITHUB_TOKEN:-} ]]; then export GH_TOKEN=$INPUT_GITHUB_TOKEN; fi
 temp=$(mktemp -d)
 work=''
 trap cleanup EXIT
@@ -86,7 +99,7 @@ select_batch() {
   plan=$(value preview publication-plan)
   needed=$(jq -r 'any(.[]; .action != "none")' <<< "$plan")
   output publication-needed "$needed"
-  if [[ -n $selected && ( $needed == true || ${INPUT_RETRY:-false} == true || $operation == retry-publication ) ]]; then
+  if [[ -n $selected && ( $operation == select || $needed == true || ${INPUT_RETRY:-false} == true || $operation == retry-publication ) ]]; then
     output release-commit "$selected"
     output releases "$(value preview releases)"
   else

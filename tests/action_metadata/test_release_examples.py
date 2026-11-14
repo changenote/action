@@ -24,7 +24,7 @@ class ReleaseExamples(unittest.TestCase):
         steps = workflow["jobs"]["release"]["steps"]
         self.assertEqual(len(steps), 2)
         self.assertEqual(steps[0]["with"]["persist-credentials"], "false")
-        self.assertEqual(steps[1]["uses"], "changenote/action/release@<full-action-commit-sha>")
+        self.assertEqual(steps[1]["uses"], "changenote/action@<full-action-commit-sha>")
         self.assertEqual(steps[1]["with"], {"operation": "${{ inputs.operation || 'auto' }}"})
 
     def test_logice_keeps_exact_commit_ci_and_artifacts_separate(self):
@@ -49,7 +49,11 @@ class ReleaseExamples(unittest.TestCase):
         self.assertEqual(jobs["docker"]["uses"], "./.github/workflows/docker.yml")
         self.assertEqual(jobs["docker"]["with"]["revision"], "${{ needs.publish.outputs.release-commit }}")
         self.assertEqual(jobs["docker"]["with"]["version-tag"], "${{ fromJSON(needs.publish.outputs.releases)[0].tag }}")
-        self.assertIn("inputs.operation == 'retry-publication'", jobs["select"]["steps"][-1]["with"]["retry"])
+        self.assertIn("needs.select.outputs.publication-needed == 'true'", jobs["validate"]["if"])
+        self.assertIn("inputs.operation == 'retry-publication'", jobs["validate"]["if"])
+        self.assertEqual(jobs["select"]["steps"][-1]["uses"], "changenote/action/select@<full-action-commit-sha>")
+        self.assertEqual(jobs["release"]["steps"][-1]["uses"], "changenote/action/manage-pr@<full-action-commit-sha>")
+        self.assertEqual(jobs["publish"]["steps"][-1]["uses"], "changenote/action/publish@<full-action-commit-sha>")
         self.assertIn("inputs.operation == 'retry-publication'", jobs["docker"]["if"])
         self.assertNotIn("needs.release", jobs["publish"]["if"])
 
@@ -65,7 +69,7 @@ class ReleaseExamples(unittest.TestCase):
             text = (ROOT / "examples/github-actions" / name).read_text()
             self.assertNotIn("scripts/action/", text)
             self.assertNotIn("setup-changenote", text)
-            self.assertNotIn("VERSION", text.replace("CHANGENOTE_NODE_VERSION", "").replace("CHANGENOTE_NPM_VERSION", ""))
+            self.assertNotIn("VERSION", text.replace("CHANGENOTE_NODE_VERSION", "").replace("CHANGENOTE_NPM_VERSION", "").replace("CHANGENOTE_CLI_VERSION", ""))
 
     @unittest.skipUnless(shutil.which("actionlint"), "actionlint is not on PATH")
     def test_workflows_lint_with_consumer_workflow_contracts(self):

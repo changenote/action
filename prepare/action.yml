@@ -1,0 +1,110 @@
+name: Changenote Prepare
+description: Prepare project tools and offline lockfile caches without managing PRs or publishing (Linux).
+inputs:
+  cli-path:
+    description: Trusted absolute CLI path returned by changenote/action/setup in this job. Empty installs version.
+    default: ''
+  version:
+    description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
+    default: latest
+  operation:
+    description: Environment scope only. manage-pr prepares pending notes; select or publish prepares the saved batch; auto prepares both.
+    default: manage-pr
+  github-token:
+    description: Token with contents read permission for all environment scopes.
+    default: ${{ github.token }}
+  base-branch:
+    description: Release branch. Defaults to the repository default branch.
+    default: ''
+  expected-release-commit:
+    description: Exact batch commit for the publish environment scope. Required for publish and rejected for other scopes.
+    default: ''
+  node-version:
+    description: Node.js version for configured npm lockfiles.
+    default: 'lts/*'
+  npm-version:
+    description: Exact npm version. Empty uses the npm bundled with Node.js.
+    default: ''
+  rust-toolchain:
+    description: Rust toolchain for configured Cargo lockfiles; not needed for CLI installation.
+    default: stable
+  uv-version:
+    description: uv version for CLI installation and configured uv lockfiles. Empty uses setup-uv's default.
+    default: ''
+outputs:
+  cargo:
+    description: Whether preparation requires Cargo.
+    value: ${{ steps.environment.outputs.cargo }}
+  npm:
+    description: Whether preparation requires npm.
+    value: ${{ steps.environment.outputs.npm }}
+  uv:
+    description: Whether preparation requires uv lockfile support.
+    value: ${{ steps.environment.outputs.uv }}
+  pr-environment-ready:
+    description: Whether current PR environment preparation succeeded.
+    value: ${{ steps.environment.outputs.pr-environment-ready != 'false' && steps.warm.outputs.pr-environment-ready != 'false' }}
+runs:
+  using: composite
+  steps:
+    - name: Validate release inputs
+      id: inputs
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_OPERATION: ${{ inputs.operation }}
+        INPUT_EXPECTED_RELEASE_COMMIT: ${{ inputs.expected-release-commit }}
+        INPUT_NPM_VERSION: ${{ inputs.npm-version }}
+        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      run: bash "$ACTION_PATH/../scripts/action/release.sh" validate
+    - name: Set up uv
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      with:
+        enable-cache: false
+        version: ${{ inputs.uv-version }}
+    - name: Install changenote CLI
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_CLI_PATH: ${{ inputs.cli-path }}
+      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
+    - name: Discover release environments
+      id: environment
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_OPERATION: ${{ steps.inputs.outputs.operation }}
+        INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
+        INPUT_EXPECTED_RELEASE_COMMIT: ${{ inputs.expected-release-commit }}
+        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      run: bash "$ACTION_PATH/../scripts/action/release-environment.sh" discover
+    - name: Set up Rust
+      if: steps.environment.outputs.cargo == 'true'
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      with:
+        toolchain: ${{ inputs.rust-toolchain }}
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7
+      if: steps.environment.outputs.npm == 'true'
+      with:
+        node-version: ${{ inputs.node-version }}
+        package-manager-cache: false
+    - name: Install selected npm version
+      if: steps.environment.outputs.npm == 'true' && inputs.npm-version != ''
+      shell: bash
+      env:
+        INPUT_NPM_VERSION: ${{ inputs.npm-version }}
+      # zizmor: ignore[adhoc-packages] -- Exact npm-version is validated; lifecycle scripts are disabled.
+      run: npm install --global --ignore-scripts --no-audit --no-fund "npm@$INPUT_NPM_VERSION"
+    - name: Populate offline package caches
+      id: warm
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        GH_TOKEN: ${{ inputs.github-token }}
+        INPUT_OPERATION: ${{ steps.inputs.outputs.operation }}
+        INPUT_BASE_BRANCH: ${{ inputs.base-branch }}
+        INPUT_EXPECTED_RELEASE_COMMIT: ${{ inputs.expected-release-commit }}
+        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
+      run: bash "$ACTION_PATH/../scripts/action/release-environment.sh" warm

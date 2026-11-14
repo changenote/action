@@ -3,6 +3,9 @@ set -euo pipefail
 # shellcheck source=scripts/action/common.sh
 source "${BASH_SOURCE[0]%/*}/common.sh"
 setup
+if [[ -n ${GITHUB_REF:-} ]]; then
+  [[ $GITHUB_REF == "refs/heads/$base" ]] || fail 'Run PR management on its selected base branch.'
+fi
 branch="narumi/chore/changenote-release-$base"
 git check-ref-format "refs/heads/$branch" || fail 'Base branch cannot form a release branch.'
 marker='<!-- changenote-release-pr -->'

@@ -30,6 +30,7 @@ if [[ $legacy_batch == true ]]; then
   printf 'Legacy batch is already fully published; no remote writes are required.\n'
   exit 0
 fi
+require_unchanged_publication_batch
 "$cli" tag
 changed='[]'
 index=0
