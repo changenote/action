@@ -1,6 +1,9 @@
 name: Changenote Release
 description: Set up changenote and manage, select, or publish releases from package configuration (Linux).
 inputs:
+  version:
+    description: Changenote CLI version to install from crates.io. Use latest or an exact stable version.
+    default: latest
   operation:
     description: auto, manage-pr, select, publish, or retry-publication. auto manages PRs and publishes pending batches on pushes; on manual runs it only manages PRs.
     default: auto
@@ -23,7 +26,7 @@ inputs:
     description: Exact npm version. Empty uses the npm bundled with Node.js.
     default: ''
   rust-toolchain:
-    description: Rust toolchain for the trusted CLI build and configured Cargo lockfiles.
+    description: Rust toolchain for CLI installation and configured Cargo lockfiles.
     default: stable
   uv-version:
     description: uv version for configured uv lockfiles. Empty uses setup-uv's default.
@@ -79,34 +82,17 @@ runs:
         INPUT_NPM_VERSION: ${{ inputs.npm-version }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
       run: bash "$ACTION_PATH/../scripts/action/release.sh" validate
-    - name: Identify trusted CLI source
-      id: cli
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
-      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh" key
-    - uses: actions/cache@v5
-      id: cache
-      with:
-        path: ${{ steps.cli.outputs.directory }}
-        key: ${{ steps.cli.outputs.key }}
-    - uses: dtolnay/rust-toolchain@stable
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
       with:
         toolchain: ${{ inputs.rust-toolchain }}
-    - name: Build trusted CLI
-      if: steps.cache.outputs.cache-hit != 'true'
+    - name: Install changenote CLI
       shell: bash
       env:
         ACTION_PATH: ${{ github.action_path }}
+        INPUT_VERSION: ${{ inputs.version }}
         INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
-      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh" install
-    - name: Verify and activate CLI
-      shell: bash
-      env:
-        ACTION_PATH: ${{ github.action_path }}
-        INPUT_RUST_TOOLCHAIN: ${{ inputs.rust-toolchain }}
-      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh" activate
+      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
     - name: Discover release environments
       id: environment
       shell: bash

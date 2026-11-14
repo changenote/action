@@ -32,12 +32,10 @@ jobs:
           shellcheck -x scripts/action/*.sh
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.11
           "$(go env GOPATH)/bin/actionlint"
-      - name: Install trusted CLI
+      - name: Install changenote CLI
         env:
-          ACTION_PATH: ${{ github.workspace }}/release
-        run: |
-          bash scripts/action/install-cli.sh install
-          bash scripts/action/install-cli.sh activate
+          INPUT_VERSION: latest
+        run: bash scripts/action/install-cli.sh
       - name: Check Action release plan
         run: changenote status
       - run: uv run --no-project python -m unittest discover -s tests/actions -v

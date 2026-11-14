@@ -1,6 +1,7 @@
 # Lower-level GitHub Actions
 
-Use these Actions when the workflow manages CLI installation and package-manager setup.
+Use these Actions when the workflow manages separate release operations and project package-manager setup.
+Each Action installs the CLI selected by its `version` input.
 For automatic setup, use the [config-driven release Action](github-actions.md#config-driven-github-publication).
 For project-owned publication scripts, use the [root Action guide](github-actions.md#root-action-post-merge-commands).
 
@@ -15,9 +16,10 @@ For contributor PRs, use the read-only [check Action](checks.md#github-action-re
 
 ## Requirements
 
-The Release PR and publication Actions require Linux, Bash, Git, `gh`, `jq`, a clean checkout, and an installed compatible `changenote` executable on `PATH`.
-Ubuntu GitHub-hosted runners include the non-CLI tools.
-These Actions do not install the CLI.
+The Release PR and publication Actions require Linux, Bash, Git, `gh`, `jq`, and a clean checkout.
+Ubuntu GitHub-hosted runners include these tools.
+Each Action sets up stable Rust and installs changenote from crates.io.
+`version` defaults to `latest`; use an exact stable version for reproducible runs.
 
 - Run at the repository root.
   - Action scripts come from the Action checkout, not the consumer repository.
@@ -25,9 +27,9 @@ These Actions do not install the CLI.
   - Both writing Actions check the batch path before CLI writes.
 - Prepare the package managers and cached dependencies required by [lockfile synchronization](https://github.com/changenote/changenote/blob/main/docs/configuration.md#automatic-lockfile-synchronization).
   - The CLI updates configured primary and additional version files and supported existing lockfiles, not unlisted manifests.
-- Upgrade CLI and Action pins together.
-  - Use reviewed compatible full commit SHAs from their separate repositories.
-  - [`cli-source.env`](../cli-source.env) records the CLI revision tested by this Action checkout.
+- Select a CLI version compatible with the reviewed Action SHA.
+  - The CLI version and Action commit SHA are different values.
+  - Use the same exact `version` across PR generation, preview, and publication to avoid changes between jobs.
 
 ## Release PR workflow
 
@@ -59,9 +61,6 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install changenote
-        run: cargo install --git https://github.com/changenote/changenote --rev <full-cli-commit-sha> --locked
       - uses: changenote/action@<full-action-commit-sha>
         with:
           base-branch: main
@@ -78,9 +77,6 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install changenote
-        run: cargo install --git https://github.com/changenote/changenote --rev <full-cli-commit-sha> --locked
       - uses: changenote/action/publish@<full-action-commit-sha>
         with:
           base-branch: main
@@ -98,7 +94,7 @@ PRs created with the default `GITHUB_TOKEN` do not automatically trigger PR work
 
 ## Publication preview
 
-The preview Action requires Linux, Bash, Git, `gh`, `jq`, an installed compatible CLI, and standard coreutils. It needs only `contents: read`. It reads the selected remote branch in a temporary repository; the caller's files, index, refs, tags, and Git identity are unchanged. A dirty or stale source checkout does not select the release. Temporary fetches and release-tree reconstruction are removed on success and failure.
+The preview Action requires Linux, Bash, Git, `gh`, `jq`, and standard coreutils. It installs the selected CLI from crates.io. It needs only `contents: read`. It reads the selected remote branch in a temporary repository; the caller's files, index, refs, tags, and Git identity are unchanged. A dirty or stale source checkout does not select the release. Temporary fetches and release-tree reconstruction are removed on success and failure.
 
 ```yaml
 name: Publication preview
@@ -110,15 +106,12 @@ jobs:
   preview:
     runs-on: ubuntu-latest
     steps:
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Install changenote
-        run: cargo install --git https://github.com/changenote/changenote --rev <full-cli-commit-sha> --locked
       - uses: changenote/action/preview@<full-action-commit-sha>
         with:
           base-branch: main
 ```
 
-This is a template, not part of the production release workflow. Use separate reviewed compatible full SHAs for the CLI and Action repositories. Preview uses the same latest-batch discovery, full-tree verification, and remote-state inspection as publication. It never creates tags, commits, PRs, or Releases and does not inspect registries.
+This is a template, not part of the production release workflow. Use a reviewed Action SHA and a compatible CLI `version`. Preview uses the same latest-batch discovery, full-tree verification, and remote-state inspection as publication. It never creates tags, commits, PRs, or Releases and does not inspect registries.
 
 The `publication-plan` output is a compact JSON array of `name`, `version`, `tag`, `action`, and `conflicts`. Actions are `create-tag-and-release`, `create-release`, `none`, or `conflict`. Conflicts include a wrong remote tag identity, a draft Release, or a Release without its remote tag. Every batch entry is inspected before a conflict report is emitted. The `ready` output is true only after complete inspection finds no conflicts. `release-commit` identifies the verified batch commit.
 
@@ -164,6 +157,7 @@ To retry custom scripts, re-run the original eligible workflow. A newer batch bl
 
 | Action | Input | Default |
 | --- | --- | --- |
+| All five Actions | `version` | `latest`; or an exact stable CLI version from crates.io |
 | Release PR, Publication, Preview | `github-token` | Workflow token |
 | Release PR, Publication, Preview | `base-branch` | Repository default branch |
 | Release PR | `commit-message` | `chore(release): version packages` |

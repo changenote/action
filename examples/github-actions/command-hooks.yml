@@ -17,11 +17,6 @@ jobs:
       - uses: actions/checkout@<full-checkout-commit-sha>
         with:
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@<full-toolchain-commit-sha>
-        with:
-          toolchain: stable
-      - name: Install trusted CLI
-        run: cargo install --git https://github.com/changenote/changenote --rev '<full-cli-commit-sha>' --locked
       # Configure project runtimes, dependencies, caches, and registry credentials
       # here. The scripts must test/build the verified source before upload.
       - uses: changenote/action@<full-action-commit-sha>

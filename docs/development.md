@@ -13,47 +13,47 @@ The CLI and its crates.io and PyPI publication remain in [changenote/changenote]
 - `VERSION`: independent Action release version.
 - `.changenote/`: release configuration and pending notes for the `action` package.
 - `.github/workflows/release.yml`: version PRs and GitHub publication for this repository.
-- `cli-source.env`: trusted CLI repository, full revision, and expected version.
-- `scripts/action/`: shared Action implementation.
+- `scripts/action/`: shared Action implementation and CLI installer.
 - `tests/actions/`: local Git/mock GitHub integration tests.
-- `tests/action_metadata/`: Action metadata, setup, and example checks.
+- `tests/action_metadata/`: metadata, installation, and example checks.
 - `examples/github-actions/`: consumer workflow templates.
 
-## Trusted CLI installation
+## CLI installation
 
-Run from the Action repository root with Rust, Cargo, and uv installed:
+All five public Actions accept `version` and install changenote from crates.io.
+The default `latest` selects the latest stable published CLI; the repository stores no CLI version or source-revision pin.
+Use an exact stable version, with an optional leading `v`, for repeatable runs.
+Version ranges, URLs, Git revisions, and prereleases are rejected.
+`version` selects the CLI, not the Action's own `VERSION` file.
+
+From the Action repository root, install the latest stable CLI with Rust and Cargo:
 
 ```sh
-source ./cli-source.env
-cargo install --git "$CLI_REPOSITORY" --rev "$CLI_REVISION" --locked
+cargo install --registry crates-io --locked changenote
 export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
-test "$(changenote --version)" = "changenote $CLI_VERSION"
+changenote --version
 ```
 
-The current metadata selects:
+For an exact version, use `cargo install --registry crates-io --locked --version '=0.11.0' changenote`.
+CI runs the shared installer with `INPUT_VERSION=latest` before the integration tests.
+Tests use the installed executable on `PATH`, not an Action-local Cargo build or a sibling repository.
 
-| Variable | Value |
-| --- | --- |
-| `CLI_REPOSITORY` | `https://github.com/changenote/changenote` |
-| `CLI_REVISION` | `c644511a48a4c09a72b1d7a7b58dc6d6d8f374f5` |
-| `CLI_VERSION` | `0.11.0` |
+The Actions set up Rust and install into a new runner temporary directory.
+`/release` uses its `rust-toolchain` input; the other Actions use stable Rust.
+The installer runs outside the consumer checkout, removes GitHub token variables, and does not load consumer Cargo configuration or build consumer source.
+The selected executable is verified before its directory is added to `GITHUB_PATH`.
+Installation failure does not fall back to an executable already on `PATH`.
+There is no Action-managed CLI executable cache; default `latest` is resolved on each invocation.
+Registry installation and Rust setup need network access.
 
-CI installs this exact pin before the integration tests.
-Tests use the installed `changenote` executable on `PATH`, not an Action-local Cargo build or a sibling CLI checkout.
-The `/release` Action uses the same metadata with `cargo install --git`, `--rev`, and `--locked`.
-It still installs the selected Rust toolchain and caches the executable.
-It does not compile Action source or contributor PR source as the CLI.
-
-Treat `cli-source.env` as trusted executable shell input. Source only a reviewed Action checkout.
-When changing the pin, review the CLI revision and confirm its version, then run the complete Action suite.
-The CLI and Action have independent release versions and commit SHAs.
-A CLI release does not automatically change the Action pin.
-Update `CLI_REVISION` and `CLI_VERSION` together after review, then add an Action change note and run the complete suite.
+For reproducible version PRs, selection, and publication, use the same exact CLI version in every job.
+A reviewed Action SHA alone does not freeze the CLI when `version` is `latest`.
+Old CLI versions might not support newer configuration or release data; test the selected version before production use.
 
 ## Local checks
 
-Install Bash, Git, `gh`, `jq`, ShellCheck, actionlint, and zizmor.
-Run from the Action repository root after installing the trusted CLI:
+Install Bash, Git, `gh`, `jq`, uv, ShellCheck, actionlint, and zizmor.
+Run from the repository root after installing changenote:
 
 ```sh
 for script in scripts/action/*.sh; do bash -n "$script"; done
@@ -66,26 +66,25 @@ uv run --no-project --with pyyaml python -m unittest discover -s tests/action_me
 ```
 
 Tests use temporary consumer repositories and a file-backed GitHub mock.
-They do not push remote tags, create hosted Releases, or upload registry packages.
-Do not replace the reviewed CLI pin with contributor code for privileged release tests.
+They do not push hosted tags, create hosted Releases, or upload registry packages.
+Installer unit tests use a Cargo stub to check version arguments, consumer isolation, and failure handling without downloads.
 
 ## Action releases
 
-This repository uses changenote to release the single `action` package.
-`VERSION` is its version source; `cli-source.env` is not an Action version file.
-The initial `0.0.0` baseline is unreleased. The initial patch note plans `v0.0.1`.
-Do not copy the CLI's release number or change its pin to match the Action version.
+This repository uses changenote to release the single `action` package independently of the CLI.
+`VERSION` is its version source. Do not copy a CLI release number into it.
+The initial `0.0.0` baseline is unreleased; the initial patch note plans `v0.0.1`.
 
 Add notes according to the [Action note policy](../.changenote/README.md), then run `changenote status`.
-CI validates the plan with the trusted installed CLI.
+CI validates the plan with the installed CLI.
 The first version PR generates `CHANGELOG.md` and `.changenote/releases.json`, updates `VERSION`, and consumes the initial note.
 Those generated files are not created by this setup change.
 
-The Release workflow uses a reviewed full SHA of `changenote/action/release` to manage this repository.
-This workflow pin is separate from the CLI pin bundled with the Action being developed.
-Updating `cli-source.env` does not update the workflow's release tooling automatically.
-Review and update each pin separately when needed.
-The pinned Action has some tag-based tool dependencies; its SHA does not freeze the complete build toolchain.
+The repository's Release workflow still uses an earlier reviewed full SHA of `changenote/action/release`.
+That immutable revision keeps its historical CLI source pin and does not accept the new `version` input.
+This change cannot modify an already pinned Action implementation.
+After a new implementation is reviewed, update the workflow's Action SHA separately before using `version` there.
+Do not invent a new SHA or change to an unpinned branch as a shortcut.
 
 On pushes to `main`, `auto` manages the version PR and publishes incomplete validated batches.
 Merge the version PR only after review; the following main push publishes its `v<version>` tag and GitHub Release.
@@ -101,16 +100,16 @@ Before enabling this workflow:
 2. Permit the release job to write contents and pull requests and to push the managed release branch.
 3. Check the repository's PR review and branch rules.
    - PRs created with the default `GITHUB_TOKEN` do not trigger PR CI automatically.
-   - If PR CI is required, configure a reviewed GitHub App token or PAT through the Action's `github-token` input.
+   - If PR CI is required, configure a reviewed GitHub App token or PAT through `github-token`.
 
 Adding or testing this setup does not authorize `changenote version`, `changenote tag`, or a hosted Release run.
-Hosted permissions, event delivery, and cache restoration require separate authorized verification.
 To stop release automation, disable the workflow before recovery.
 Inspect remote publication state before a retry; never move existing tags or replace published artifacts automatically.
+For an unexpected CLI change with `latest`, select an exact version in the caller workflow.
 
 ## Verification limits
 
-Local tests do not verify hosted cache restoration, tool-install Actions, fork events, token scopes, branch rules, or deployment approvals.
+Local checks do not verify hosted Rust setup, registry access from runners, package caches, fork events, token scopes, branch rules, or deployment approvals.
 A maintainer must test these settings in an authorized disposable repository before production use.
 No release or remote upload is approved by this guide.
 For repository publication order and production pins, see [Migration](migration.md).

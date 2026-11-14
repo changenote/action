@@ -1,7 +1,7 @@
 # Check PR notes with GitHub Actions
 
 Use `changenote/action/check@<full-action-commit-sha>` for read-only contributor PR checks.
-It requires an installed trusted CLI and defaults to package coverage.
+It installs the CLI selected by `version` and defaults to package coverage.
 The CLI defaults to PR-level coverage. See [CLI checks and file patterns](https://github.com/changenote/changenote/blob/main/docs/checks.md) for coverage rules and exemptions.
 
 ## CLI-only CI example
@@ -32,9 +32,9 @@ Branch names enter the shell through an environment variable, not inline express
 
 ## GitHub Action report
 
-Use the check Action after checkout and installation of a reviewed compatible CLI.
-Replace both placeholders with full SHAs from their separate repositories.
-[`cli-source.env`](../cli-source.env) records the CLI revision tested by this Action checkout.
+Use the check Action after checkout. It sets up stable Rust and installs changenote from crates.io.
+Replace the Action placeholder with a reviewed full SHA.
+`version` defaults to `latest`, the latest stable published CLI; use an exact version for repeatable checks.
 
 ```yaml
 permissions:
@@ -44,9 +44,6 @@ steps:
     with:
       fetch-depth: 0
       persist-credentials: false
-  - uses: dtolnay/rust-toolchain@stable
-  - name: Install trusted CLI
-    run: cargo install --git https://github.com/changenote/changenote --rev <full-cli-commit-sha> --locked
   - uses: changenote/action/check@<full-action-commit-sha>
     with:
       since: refs/remotes/origin/${{ github.base_ref }}
@@ -54,8 +51,9 @@ steps:
 ```
 
 Run this job on `pull_request`, not a privileged event that executes contributor code.
-The Action requires Linux, Bash, Git, `jq`, an installed trusted CLI, a clean repository root, and sufficient local history.
-It does not fetch, build contributor code, run package managers, post comments, or require a write token.
+The Action requires Linux, Bash, Git, `jq`, a clean repository root, and sufficient local history.
+CLI installation needs network access to Rust distribution servers and crates.io.
+After setup, the check does not fetch, build contributor code, run project package managers, post comments, or require a write token.
 Do not install the CLI from the PR revision. The checkout step needs read permission; the reporting script uses no GitHub token.
 
 The required `since` input names an available Git ref. `coverage` defaults to `package`; set `pr` for the original policy.

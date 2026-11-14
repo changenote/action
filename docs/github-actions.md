@@ -7,13 +7,13 @@ Choose an entry point for your workflow:
 | Install tools and publish tags and GitHub Releases | [Config-driven publication](#config-driven-github-publication) |
 | Run project-owned publication scripts after a verified merge | [Root Action](#root-action-post-merge-commands) |
 | Validate the release commit in separate CI jobs | [External CI and artifacts](#external-ci-and-artifacts-logice-example) |
-| Manage CLI setup and separate release operations yourself | [Lower-level Actions](github-actions-reference.md) |
+| Manage separate release operations and project tool setup | [Lower-level Actions](github-actions-reference.md) |
 | Check contributor PR notes without publication | [PR note checks](checks.md#github-action-report) |
 
 Built-in publication creates Git tags and GitHub Releases, not registry artifacts.
 Keep changelog output enabled for built-in publication.
 The CLI repository owns its [release routing and registry setup](https://github.com/changenote/changenote/blob/main/docs/development.md#repository-release-workflow).
-For the Action repository's CLI pin and local checks, see [Development](development.md).
+For CLI installation and local checks, see [Development](development.md).
 For the repository move and production cutover, see [Migration](migration.md).
 
 ## Root Action: post-merge commands
@@ -21,8 +21,9 @@ For the repository move and production cutover, see [Migration](migration.md).
 Use `changenote/action@<full-action-commit-sha>` to manage version PRs and run optional project commands after a managed PR is merged.
 See [the command-hook workflow](../examples/github-actions/command-hooks.yml).
 Replace all SHA placeholders with reviewed compatible full commit SHAs.
-The root Action needs an installed trusted CLI, Bash, Git, `gh`, `jq`, and Python 3 on Linux. Ubuntu runners provide the non-CLI tools.
-It sets up uv for its own router, not the project's runtime or dependencies.
+The root Action needs Bash, Git, `gh`, `jq`, and Python 3 on Linux. Ubuntu runners provide these tools.
+It installs the CLI from crates.io using `version` and sets up Rust and uv for its own runtime.
+It does not prepare the project's runtime or dependencies.
 Prepare supported lockfile tools and caches for PR generation and release replay as described in [automatic lockfile synchronization](https://github.com/changenote/changenote/blob/main/docs/configuration.md#automatic-lockfile-synchronization).
 Never build the trusted CLI from a contributor PR.
 
@@ -34,6 +35,7 @@ If generated PRs must start CI, use a GitHub App token or PAT through `github-to
 
 | Optional input | Default | Execution |
 | --- | --- | --- |
+| `version` | `latest` | Install the latest stable CLI from crates.io, or an exact version such as `0.11.0`. |
 | `publish-script` | Empty | Publish packages after managed-merge and full-tree verification. |
 | `release-script` | Empty | Create tags, assets, or a GitHub Release after successful `publish-script`, or directly if it is absent. |
 
@@ -111,7 +113,8 @@ The old input names are not supported. Script text, execution order, and empty d
 
 Consumers of the older root Action must restrict invocation to base-branch `push` and `workflow_dispatch` events.
 Do not use the root on contributor PRs. Use `/check` for read-only note checks.
-The compatible installed-CLI prerequisite and existing PR-input defaults remain unchanged.
+All five Actions now install the CLI. Separate caller installation is not required.
+Use the `version` input when an exact CLI version is required; otherwise each invocation resolves `latest`.
 Both commands are opt-in; upgrading without command inputs does not enable package or GitHub publication.
 Consumers using `/release` retain its existing built-in publication and historical-recovery behavior.
 No consumer or production workflow is migrated by these examples.
@@ -137,8 +140,8 @@ Yanks and asset removal require separate maintainer authorization.
 Use `changenote/action/release@<full-action-commit-sha>` to install the CLI and run releases.
 Keep package settings in `.changenote/config.json`. Select workflow behavior and tool versions with Action inputs.
 
-The existing root, `check`, `preview`, and `publish` Actions remain supported.
-They do not install the CLI. The new `release` Action is an opt-in entry point.
+The root, `check`, `preview`, and `publish` Actions also install the CLI.
+The `release` entry point additionally prepares project package-manager caches and provides built-in publication.
 
 ## Minimal workflow
 
@@ -171,14 +174,21 @@ Do not merge another Release PR until the current batch and downstream artifacts
 
 ## Tool setup
 
-The Action installs the trusted CLI from `https://github.com/changenote/changenote` at the full revision recorded in [`cli-source.env`](../cli-source.env).
-The current pin is CLI version `0.11.0`, revision `c644511a48a4c09a72b1d7a7b58dc6d6d8f374f5`.
-Installation uses `cargo install --git "$CLI_REPOSITORY" --rev "$CLI_REVISION" --locked`.
-It compiles neither the Action checkout nor the consumer repository as the CLI.
-The `rust-toolchain` input still selects Rust for CLI installation and Cargo lockfile work.
-A successful run caches the executable by trusted source pin, runner platform, architecture, and Rust toolchain.
-Cold caches need access to GitHub, Rust distribution servers, and crates.io.
-The Action repository's CI and local integration tests use the same pin; see [Development](development.md#trusted-cli-installation).
+All five Actions install the CLI from crates.io with `cargo install --registry crates-io --locked`.
+The `version` input defaults to `latest`, the latest stable published version.
+An exact version such as `0.11.0` or `v0.11.0` adds `--version '=0.11.0'`.
+Ranges, Git revisions, URLs, and prereleases are rejected before installation.
+The Action verifies the installed version before adding it to `PATH`; it never falls back to a caller-installed CLI after failure.
+
+Installation runs in a new runner temporary directory, not the consumer checkout.
+It builds published crate source, not Action source or contributor code, and does not load the consumer's Cargo configuration.
+GitHub token variables are removed from the Cargo installation process.
+The `rust-toolchain` input selects Rust for `/release` CLI installation and Cargo lockfile work.
+Other Actions set up stable Rust for their CLI installation.
+There is no Action-managed executable cache; `latest` is resolved again for each invocation.
+Installation needs access to Rust distribution servers and crates.io.
+CI tests the latest published CLI; see [Development](development.md#cli-installation).
+Use the same exact `version` across PR generation, selection, and publication when reproducible replay is required.
 
 For each release operation, the Action reads validated configuration in temporary checkouts.
 It discovers primary and additional manifest outputs, then finds their nearest supported lockfile.
@@ -229,6 +239,7 @@ They create Git tags and GitHub Releases, not registry artifacts.
 
 | Input | Default | Rule |
 | --- | --- | --- |
+| `version` | `latest` | CLI version from crates.io; latest stable or an exact stable version. |
 | `github-token` | `github.token` | Use the permissions required by the operation. |
 | `base-branch` | Repository default branch | The triggering ref must be this branch. |
 | `expected-release-commit` | Empty | Required for `publish`; full lowercase 40-character commit SHA. Rejected for other operations. |
@@ -313,5 +324,5 @@ Existing release text and tags are not replaced.
 
 Local tests cover operation routing, source isolation, setup commands, metadata, and publication guards.
 Linux container tests use real Git repositories and a mocked GitHub API.
-Hosted cache restoration, tool-install Actions, fork settings, token permissions, and branch rules still need a disposable-repository test.
+Hosted tool installation, package-cache behavior, fork settings, token permissions, and branch rules still need a disposable-repository test.
 No hosted publication or registry upload is authorized by these examples.

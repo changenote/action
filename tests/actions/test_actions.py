@@ -11,7 +11,7 @@ import unittest
 SOURCE = Path(__file__).resolve().parents[2]
 CLI = shutil.which("changenote")
 if CLI is None:
-    raise RuntimeError("Install the CLI from cli-source.env and add it to PATH before running Action tests.")
+    raise RuntimeError("Install changenote from crates.io and add it to PATH before running Action tests.")
 CLI = Path(CLI).resolve()
 BRANCH = "narumi/chore/changenote-release-main"
 

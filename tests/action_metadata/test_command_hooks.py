@@ -14,7 +14,7 @@ class CommandHookMetadata(unittest.TestCase):
 
     def test_only_two_optional_commands_extend_the_existing_inputs(self):
         self.assertEqual(set(self.action["inputs"]), {
-            "github-token", "base-branch", "commit-message", "pr-title",
+            "version", "github-token", "base-branch", "commit-message", "pr-title",
             "publish-script", "release-script",
         })
         for key in ("publish-script", "release-script"):
@@ -35,7 +35,7 @@ class CommandHookMetadata(unittest.TestCase):
 
     def test_router_tool_setup_is_pinned_and_does_not_build_a_consumer_cli(self):
         steps = self.action["runs"]["steps"]
-        self.assertEqual(len(steps), 2)
+        self.assertEqual(len(steps), 4)
         self.assertRegex(steps[0]["uses"], r"^astral-sh/setup-uv@[0-9a-f]{40}$")
         self.assertEqual(steps[0]["with"]["enable-cache"], "false")
         text = (ROOT / "action.yml").read_text()

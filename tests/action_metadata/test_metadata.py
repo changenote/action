@@ -28,12 +28,9 @@ class Metadata(unittest.TestCase):
             self.assertRegex(step["uses"], r"^[^@]+@[0-9a-f]{40}$")
             if step["uses"].startswith("actions/checkout@"):
                 self.assertEqual(step["with"]["persist-credentials"], "false")
-        install = next(step for step in steps if step.get("name") == "Install trusted CLI")
-        self.assertEqual(install["env"]["ACTION_PATH"], "${{ github.workspace }}/release")
-        self.assertEqual(install["run"].splitlines(), [
-            "bash scripts/action/install-cli.sh install",
-            "bash scripts/action/install-cli.sh activate",
-        ])
+        install = next(step for step in steps if step.get("name") == "Install changenote CLI")
+        self.assertEqual(install["env"], {"INPUT_VERSION": "latest"})
+        self.assertEqual(install["run"], "bash scripts/action/install-cli.sh")
         for suite in ("actions", "action_metadata"):
             test = next(step for step in steps if f"-s tests/{suite} -v" in step.get("run", ""))
             self.assertLess(steps.index(install), steps.index(test))
@@ -44,6 +41,28 @@ class Metadata(unittest.TestCase):
         updates = read_yaml(ROOT / ".github/dependabot.yml")["updates"]
         self.assertEqual([update["package-ecosystem"] for update in updates], ["github-actions"])
         self.assertGreaterEqual(int(updates[0]["cooldown"]["default-days"]), 7)
+
+    def test_all_public_actions_install_the_requested_cli_before_use(self):
+        for path, operation in (("action.yml", "version"), ("release/action.yml", "release"),
+                                ("check/action.yml", "check"), ("preview/action.yml", "preview"),
+                                ("publish/action.yml", "publish")):
+            with self.subTest(action=path):
+                metadata = read_yaml(ROOT / path)
+                self.assertEqual(metadata["inputs"]["version"]["default"], "latest")
+                steps = metadata["runs"]["steps"]
+                install = next(step for step in steps if step.get("name") == "Install changenote CLI")
+                self.assertEqual(install["env"]["INPUT_VERSION"], "${{ inputs.version }}")
+                self.assertEqual(install["shell"], "bash")
+                self.assertNotIn("${{", install["run"])
+                self.assertNotIn("GH_TOKEN", install["env"])
+                self.assertNotIn("GITHUB_TOKEN", install["env"])
+                prefix = "" if path == "action.yml" else "../"
+                self.assertEqual(install["run"], f'bash "$ACTION_PATH/{prefix}scripts/action/install-cli.sh"')
+                run = next(step for step in steps if step.get("id") == operation)
+                rust = next(step for step in steps if step.get("uses", "").startswith("dtolnay/"))
+                self.assertRegex(rust["uses"], r"^dtolnay/rust-toolchain@[0-9a-f]{40}$")
+                self.assertLess(steps.index(rust), steps.index(install))
+                self.assertLess(steps.index(install), steps.index(run))
 
     def test_inputs_outputs_and_composite_paths(self):
         fixture = test_actions.Actions("test_no_batch")
@@ -76,10 +95,10 @@ class Metadata(unittest.TestCase):
             if step == "publish":
                 self.assertEqual(metadata["inputs"]["expected-release-commit"]["default"], "")
                 self.assertEqual(
-                    metadata["runs"]["steps"][0]["env"]["INPUT_EXPECTED_RELEASE_COMMIT"],
+                    next(item for item in metadata["runs"]["steps"] if item.get("id") == "publish")["env"]["INPUT_EXPECTED_RELEASE_COMMIT"],
                     "${{ inputs.expected-release-commit }}",
                 )
-                self.assertNotIn("${{", metadata["runs"]["steps"][0]["run"])
+                self.assertNotIn("${{", next(item for item in metadata["runs"]["steps"] if item.get("id") == "publish")["run"])
                 fixture.env["INPUT_EXPECTED_RELEASE_COMMIT"] = ""
             run = next(item for item in metadata["runs"]["steps"] if item.get("id") == step)
             self.assertEqual(run["id"], step)

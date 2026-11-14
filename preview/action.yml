@@ -1,6 +1,9 @@
 name: Changenote Publication Preview
 description: Inspect the latest validated batch without changing source Git state or publishing (Linux).
 inputs:
+  version:
+    description: Changenote CLI version to install from crates.io. Use latest or an exact stable version.
+    default: latest
   github-token:
     description: Token with contents read permission.
     default: ${{ github.token }}
@@ -23,6 +26,16 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      with:
+        toolchain: stable
+    - name: Install changenote CLI
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
     - id: preview
       shell: bash
       env:

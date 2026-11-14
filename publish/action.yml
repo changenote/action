@@ -1,6 +1,9 @@
 name: Changenote Publish
 description: Publish annotated tags and GitHub Releases from the latest validated batch (Linux).
 inputs:
+  version:
+    description: Changenote CLI version to install from crates.io. Use latest or an exact stable version.
+    default: latest
   github-token:
     description: Token with contents write permission.
     default: ${{ github.token }}
@@ -26,6 +29,16 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Set up Rust
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      with:
+        toolchain: stable
+    - name: Install changenote CLI
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        INPUT_VERSION: ${{ inputs.version }}
+      run: bash "$ACTION_PATH/../scripts/action/install-cli.sh"
     - id: publish
       shell: bash
       env:

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Read-only PR reporting. The caller supplies a trusted CLI and committed checkout.
+# Read-only PR reporting after CLI setup, using the caller's committed checkout.
 set -euo pipefail
 
 annotation() {
