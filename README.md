@@ -63,7 +63,8 @@ Built-in publication creates Git tags and GitHub Releases in the caller's reposi
 Use separate Actions for external CI and deployment approvals.
 `/inspect` also returns completed batches; gate automatic GitHub work with `publication-needed`.
 For an explicit publication retry, inspect the latest batch and pass its commit to `/publish`.
-Release metadata comes from verified consumed notes, not a required state file.
+File-free releases use verified consumed notes, not a batch file.
+Historical releases also require their committed batch metadata.
 Before enabling file-free CLI releases, follow the [migration order](docs/migration.md#file-free-release-identity).
 
 ## CLI and project setup

@@ -2,7 +2,8 @@
 
 Verify the latest committed release and inspect its GitHub tag and Release state on Linux without remote writes.
 Completed batches are returned as well as batches with incomplete publication.
-Release identity comes from consumed notes and verified Git history; no batch file is required.
+File-free releases use consumed notes and verified Git history, not a batch file.
+Historical releases also require their committed batch metadata.
 
 ## Usage
 
