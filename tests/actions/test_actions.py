@@ -865,7 +865,11 @@ class Actions(unittest.TestCase):
 
     def test_root_commit_batch_is_rejected(self):
         self.note()
-        self.cli("version")
+        batch = json.loads(self.cli("version"))
+        for entry in batch:
+            del entry["notes"]
+        # This case is explicitly a historical saved batch, on either CLI writer.
+        (self.repo / ".changenote/releases.json").write_text(json.dumps(batch, indent=2) + "\n")
         self.git("add", "--", ".")
         tree = self.git("write-tree")
         root = self.git("commit-tree", tree, "-m", "root batch")
