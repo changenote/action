@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts/action/route-release.py"
+SCRIPT = ROOT / "scripts/action/publication.sh"
 BATCH = ".changenote/releases.json"
 
 
@@ -33,8 +33,13 @@ class ReleaseCandidates(unittest.TestCase):
     def select(self, ok=True):
         before = (self.git("show-ref"), self.git("status", "--porcelain"))
         result = subprocess.run(
-            ["uv", "run", "--no-project", "--no-config", "python", str(SCRIPT),
-             "select-release", self.git("rev-parse", "HEAD")],
+            ["bash", "-c", """source "$1"
+temp=$(mktemp -d)
+trap 'rm -rf -- "$temp"' EXIT
+base_sha=$2
+find_publication_batch
+jq -n --arg release "$release" --arg parent "$parent" --argjson file_free "$file_free" '{release: $release, parent: $parent, file_free: $file_free}'
+""", "select-release", str(SCRIPT), self.git("rev-parse", "HEAD")],
             cwd=self.root, env=self.env, text=True, capture_output=True,
         )
         self.assertEqual((self.git("show-ref"), self.git("status", "--porcelain")), before)

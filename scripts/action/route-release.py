@@ -56,19 +56,6 @@ def release_candidate(commit, parent):
     return {"release": commit, "parent": parent, "file_free": False}
 
 
-def select_release(reference):
-    for commit in command("git", "rev-list", "--first-parent", reference).splitlines():
-        parents = command("git", "rev-list", "--parents", "-n", "1", commit).split()
-        if len(parents) == 1:
-            if command("git", "ls-tree", commit, "--", BATCH):
-                raise ValueError("A release batch in a root commit has no verifiable parent")
-            break
-        selected = release_candidate(commit, parents[1])
-        if selected is not None:
-            return selected
-    return {"release": "", "parent": "", "file_free": False}
-
-
 def route(event_name, event, repository, ref, base="main"):
     result = {"manage-pr": "false", "publish": "false", "release-commit": ""}
     if ref != f"refs/heads/{base}":
@@ -151,9 +138,6 @@ def check_preview(expected, actual, ready):
 
 
 def main():
-    if len(sys.argv) == 3 and sys.argv[1] == "select-release":
-        print(json.dumps(select_release(sys.argv[2])))
-        return
     if sys.argv[1:] and sys.argv[1] == "check-preview":
         check_preview(
             os.environ["EXPECTED_RELEASE_COMMIT"],

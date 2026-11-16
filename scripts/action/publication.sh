@@ -41,18 +41,48 @@ restore_pending_notes() {
   fi
 }
 
+is_release_note() {
+  local name=${1#.changenote/}
+  [[ $1 == .changenote/*.md && $name != */* && $name != .* ]] || return 1
+  case ${name,,} in readme.md|agents.md|claude.md|gemini.md) return 1 ;; esac
+}
+
 find_publication_batch() {
-  local scripts
-  scripts=$(cd -- "${BASH_SOURCE[0]%/*}" && pwd)
-  for tool in uv python3; do command -v "$tool" >/dev/null || fail "Missing prerequisite: $tool"; done
-  UV_PYTHON_DOWNLOADS=never uv run --no-project --no-config --python "$(command -v python3)" \
-    python "$scripts/route-release.py" select-release "$base_sha" > "$temp/selection.json"
-  release=$(jq -r '.release' "$temp/selection.json")
-  parent=$(jq -r '.parent' "$temp/selection.json")
-  file_free=$(jq -r '.file_free' "$temp/selection.json")
-  [[ -n $release ]] || return 0
-  if [[ $file_free == false ]]; then
-    git show "$release:.changenote/releases.json" > "$temp/batch.json"
+  local commit parents path consumed=false mode
+  release=''
+  parent=''
+  file_free=false
+  # Keep Git errors separate from an empty candidate set. Paths stay NUL-delimited.
+  git rev-list --first-parent "$base_sha" > "$temp/candidate-history" || fail 'Cannot read release history.'
+  while IFS= read -r commit; do
+    parents=$(git rev-list --parents -n 1 "$commit") || fail 'Cannot read release parents.'
+    if [[ $parents == "$commit" ]]; then
+      git ls-tree "$commit" -- .changenote/releases.json > "$temp/candidate-entry" || fail 'Cannot inspect root release.'
+      [[ ! -s $temp/candidate-entry ]] || fail 'A release batch in a root commit has no verifiable parent.'
+      break
+    fi
+    parent=${parents#* }
+    parent=${parent%% *}
+    git diff --no-renames --diff-filter=D --name-only -z "$parent" "$commit" -- .changenote \
+      > "$temp/candidate-deleted" || fail 'Cannot inspect consumed notes.'
+    consumed=false
+    while IFS= read -r -d '' path; do
+      if is_release_note "$path"; then consumed=true; break; fi
+    done < "$temp/candidate-deleted"
+    git diff --name-only "$parent" "$commit" -- .changenote/releases.json \
+      > "$temp/candidate-batch" || fail 'Cannot inspect historical batch changes.'
+    if [[ $consumed == true || -s $temp/candidate-batch ]]; then release=$commit; break; fi
+  done < "$temp/candidate-history"
+  if [[ -z $release ]]; then parent=''; return 0; fi
+  git ls-tree "$release" -- .changenote/releases.json > "$temp/candidate-entry" || fail 'Cannot inspect release batch.'
+  if [[ ! -s $temp/candidate-entry ]]; then
+    [[ $consumed == true ]] || fail 'Release batch was removed without consumed notes.'
+    file_free=true
+  else
+    read -r mode _ < "$temp/candidate-entry"
+    [[ $mode == 100644 ]] || fail 'Release batch must be a regular file.'
+    git show "$release:.changenote/releases.json" > "$temp/batch.json" || fail 'Cannot read release batch.'
+    jq -e 'type == "array" and length > 0 and all(.[]; type == "object")' "$temp/batch.json" >/dev/null || fail 'Release batch must be a non-empty object array.'
   fi
 }
 

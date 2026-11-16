@@ -278,12 +278,16 @@ class ReleaseRouting(unittest.TestCase):
         pr = self.managed(release)
         event = dict(before=self.before, after=release, forced=False, deleted=False)
         original = routing.command
+        original_output = routing.subprocess.check_output
         for base in ("stable", "release/1.x"):
             with self.subTest(base=base):
                 pr["base"]["ref"] = base
                 pr["head"]["ref"] = f"changenote-release/{base}"
                 self.associate(release, [pr])
-                with patch.object(routing, "command", side_effect=lambda *args: self.fixture.run_cmd(list(args)).stdout.strip()):
+                with (
+                    patch.object(routing, "command", side_effect=lambda *args: self.fixture.run_cmd(list(args)).stdout.strip()),
+                    patch.object(routing.subprocess, "check_output", side_effect=lambda args: original_output(args, cwd=self.fixture.repo, env=self.fixture.env)),
+                ):
                     result = routing.route("push", event, "test/repo", f"refs/heads/{base}", base)
                 self.assertEqual(result["release-commit"], release)
                 self.assertEqual(result["publish"], "true")
