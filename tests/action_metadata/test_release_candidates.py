@@ -1,5 +1,7 @@
 """Exercise read-only release discovery in standalone temporary repositories."""
 
+import contextlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -10,6 +12,9 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "scripts/action/publication.sh"
 BATCH = ".changenote/releases.json"
+spec = importlib.util.spec_from_file_location("candidate_routing", ROOT / "scripts/action/route-release.py")
+routing = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(routing)
 
 
 class ReleaseCandidates(unittest.TestCase):
@@ -21,6 +26,9 @@ class ReleaseCandidates(unittest.TestCase):
         self.git("init", "-q", "-b", "main")
         (self.root / ".changenote").mkdir()
         (self.root / "VERSION").write_text("1.0.0\n")
+        (self.root / ".changenote/config.json").write_text(json.dumps({
+            "packages": {"pkg": {"path": ".", "version_file": "VERSION"}},
+        }))
 
     def git(self, *args):
         return subprocess.check_output(["git", *args], cwd=self.root, env=self.env, text=True).strip()
@@ -64,6 +72,57 @@ jq -n --arg release "$release" --arg parent "$parent" --argjson file_free "$file
         (self.root / "later").write_text("unrelated")
         self.commit()
         self.assertEqual(self.select(), {"release": release, "parent": parent, "file_free": True})
+
+    def test_note_only_retractions_and_renames_preserve_the_release(self):
+        for saved in (False, True):
+            if saved:
+                self.doCleanups()
+                self.setUp()
+            parent = self.release()
+            if saved:
+                (self.root / BATCH).write_text('[{"package":"pkg"}]')
+            release = self.commit()
+            for change in ("remove", "rename", "paused"):
+                with self.subTest(saved=saved, change=change):
+                    note = self.root / ".changenote/pending.md"
+                    note.write_text("---\npkg: patch\n---\nLater fix\n")
+                    if change == "paused":
+                        config = self.root / ".changenote/config.json"
+                        value = json.loads(config.read_text())
+                        value["ignore"] = ["pkg"]
+                        config.write_text(json.dumps(value))
+                    maintenance_parent = self.commit()
+                    if change == "rename":
+                        note.rename(note.with_name("renamed.md"))
+                    else:
+                        note.unlink()
+                    maintenance = self.commit()
+                    self.assertEqual(self.select(), {
+                        "release": release, "parent": parent, "file_free": not saved,
+                    })
+                    with contextlib.chdir(self.root):
+                        self.assertIsNone(routing.release_candidate(maintenance, maintenance_parent))
+                        self.assertEqual(routing.release_candidate(release, parent), {
+                            "release": release, "parent": parent, "file_free": not saved,
+                        })
+
+    def test_additional_version_source_change_is_a_candidate(self):
+        config = self.root / ".changenote/config.json"
+        config.write_text(json.dumps({"packages": {"pkg": {
+            "path": ".", "version_file": "VERSION", "version_outputs": ["mirror/VERSION"],
+        }}}))
+        (self.root / "mirror").mkdir()
+        (self.root / "mirror/VERSION").write_text("1.0.0\n")
+        note = self.root / ".changenote/fix.md"
+        note.write_text("---\npkg: patch\n---\nFix\n")
+        parent = self.commit()
+        note.unlink()
+        (self.root / "mirror/VERSION").write_text("9.0.0\n")
+        release = self.commit()
+        expected = {"release": release, "parent": parent, "file_free": True}
+        self.assertEqual(self.select(), expected)
+        with contextlib.chdir(self.root):
+            self.assertEqual(routing.release_candidate(release, parent), expected)
 
     def test_historical_batch_and_migration_deletion(self):
         parent = self.release()
@@ -119,5 +178,6 @@ jq -n --arg release "$release" --arg parent "$parent" --argjson file_free "$file
         path.write_text("note")
         parent = self.commit()
         path.unlink()
+        (self.root / "VERSION").write_text("1.0.1\n")
         release = self.commit()
         self.assertEqual(self.select(), {"release": release, "parent": parent, "file_free": True})

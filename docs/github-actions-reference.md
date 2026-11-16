@@ -229,7 +229,8 @@ The [CLI repository's release workflow](https://github.com/changenote/changenote
 
 ### Release-tree verification
 
-Publication selects the latest first-parent release candidate. New candidates delete eligible top-level change notes; historical candidates change `.changenote/releases.json`. Version edits alone do not authorize publication. A malformed newest candidate stops selection instead of falling back to an older release.
+Publication selects the latest first-parent release candidate. New candidates delete eligible top-level change notes and change a configured primary or additional version file; historical candidates change `.changenote/releases.json`.
+Note-only retractions and renames are not release candidates. Version edits alone do not authorize publication. A malformed newest candidate stops selection instead of falling back to an older release.
 
 The Action reconstructs a nonempty plan from the parent's consumed notes and compares the complete generated Git tree before publication. Retained notes are excluded from planning and restored unchanged before comparison. Filename bytes do not pass through UTF-8 conversion. Unrelated edits, including retained-note changes, fail verification. Historical configuration determines version sources, tag prefixes, and source links.
 

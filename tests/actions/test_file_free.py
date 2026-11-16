@@ -40,6 +40,29 @@ class FileFree(unittest.TestCase):
         self.assertEqual(f.state()["releases"], state)
         self.assertFalse((f.repo / ".changenote/releases.json").exists())
 
+    def test_note_only_retractions_and_renames_allow_publication_and_retry(self):
+        f = self.f
+        f.note()
+        sha, plan = self.finish_release()
+        for rename in (False, True):
+            with self.subTest(rename=rename):
+                f.note(name="pending")
+                note = f.repo / ".changenote/pending.md"
+                if rename:
+                    note.rename(note.with_name("renamed.md"))
+                else:
+                    note.unlink()
+                f.commit("note maintenance")
+                f.git("push", "origin", "main")
+                _, inspected = f.action("inspect")
+                self.assertEqual(inspected["release-commit"], sha)
+                self.assertEqual(json.loads(inspected["releases"]), plan)
+                _, published = f.action("publish")
+                self.assertEqual(published["published"], "false" if rename else "true")
+                self.assertEqual(f.git("rev-parse", plan[0]["tag"] + "^{commit}"), sha)
+                self.assertEqual(len(f.state()["releases"]), 1)
+                self.assertEqual((f.repo / ".changenote/renamed.md").exists(), rename)
+
     def test_retained_notes_do_not_change_the_consumed_plan(self):
         f = self.f
         f.note()
@@ -60,6 +83,7 @@ class FileFree(unittest.TestCase):
         self.finish_release()
         f.note(name="bad")
         (f.repo / ".changenote/bad.md").unlink()
+        (f.repo / "VERSION").write_text("9.0.0\n")
         f.commit("invalid note consumption")
         f.git("push", "origin", "main")
         result, outputs = f.action("publish", ok=False)

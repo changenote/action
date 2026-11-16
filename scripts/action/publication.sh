@@ -47,6 +47,31 @@ is_release_note() {
   case ${name,,} in readme.md|agents.md|claude.md|gemini.md) return 1 ;; esac
 }
 
+version_sources_changed() {
+  local path
+  git show "$parent:.changenote/config.json" > "$temp/candidate-config" || fail 'Cannot read release configuration.'
+  jq -j '
+    def relative:
+      type == "string" and length > 0 and
+      (startswith("/") | not) and (contains("\u0000") | not) and
+      (split("/") | all(. != ".."));
+    .packages[] |
+    if (.path | relative) and (.version_file | relative) and
+       ((.version_outputs // []) | type == "array" and all(.[]; relative))
+    then . else error("Version sources must be relative file paths") end |
+    .path as $directory |
+    (.version_file, (.version_outputs // [])[]) |
+    ($directory + "/" + . | split("/") | map(select(. != "" and . != ".")) | join("/")) + "\u0000"
+  ' "$temp/candidate-config" > "$temp/candidate-version-paths" || fail 'Cannot read release version sources.'
+  [[ -s $temp/candidate-version-paths ]] || fail 'Release configuration has no version sources.'
+  while IFS= read -r -d '' path; do
+    git --literal-pathspecs diff --name-only -z "$parent" "$commit" -- "$path" \
+      > "$temp/candidate-version-diff" || fail 'Cannot inspect release version sources.'
+    if [[ -s $temp/candidate-version-diff ]]; then return 0; fi
+  done < "$temp/candidate-version-paths"
+  return 1
+}
+
 find_publication_batch() {
   local commit parents path consumed=false mode
   release=''
@@ -71,7 +96,8 @@ find_publication_batch() {
     done < "$temp/candidate-deleted"
     git diff --name-only "$parent" "$commit" -- .changenote/releases.json \
       > "$temp/candidate-batch" || fail 'Cannot inspect historical batch changes.'
-    if [[ $consumed == true || -s $temp/candidate-batch ]]; then release=$commit; break; fi
+    if [[ -s $temp/candidate-batch ]]; then release=$commit; break; fi
+    if [[ $consumed == true ]] && version_sources_changed; then release=$commit; break; fi
   done < "$temp/candidate-history"
   if [[ -z $release ]]; then parent=''; return 0; fi
   git ls-tree "$release" -- .changenote/releases.json > "$temp/candidate-entry" || fail 'Cannot inspect release batch.'
