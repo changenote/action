@@ -112,8 +112,14 @@ class Actions(unittest.TestCase):
         values = dict(line.split("=", 1) for line in output.read_text().splitlines())
         return result, values
 
-    def release(self, mode="squash"):
+    def assert_output_paths(self, actual, required):
+        # Both supported writers have the same outputs except saved batch storage.
+        required = set(required) - {".changenote/releases.json"}
+        self.assertIn(set(actual), (required, required | {".changenote/releases.json"}))
+
+    def release(self, mode="squash", saved=False):
         self.note()
+        self.release_plan = json.loads(self.cli("status"))
         self.action()
         self.git("fetch", "origin", BRANCH)
         if mode == "merge":
@@ -123,6 +129,11 @@ class Actions(unittest.TestCase):
         else:
             self.git("merge", "--squash", "FETCH_HEAD")
             self.commit("squash release")
+        if saved:
+            batch = [{key: value for key, value in entry.items() if key != "notes"} for entry in self.release_plan]
+            (self.repo / ".changenote/releases.json").write_text(json.dumps(batch, indent=2) + "\n")
+            self.git("add", "--", ".changenote/releases.json")
+            self.git("commit", "--amend", "--no-edit")
         sha = self.git("rev-parse", "HEAD")
         self.git("push", "origin", "main")
         pulls = self.state()["pulls"]
@@ -619,7 +630,7 @@ class Actions(unittest.TestCase):
         )
 
     def test_manual_batch_edits_and_versions_rejected(self):
-        self.release()
+        self.release(saved=True)
         batch = self.repo / ".changenote/releases.json"
         data = json.loads(batch.read_text())
         data[0]["notes"] = ["tampered"]
@@ -798,7 +809,7 @@ class Actions(unittest.TestCase):
         plan.write_text(self.cli("status"))
         self.cli("version")
         batch = self.repo / ".changenote/releases.json"
-        batch.unlink()
+        batch.unlink(missing_ok=True)
         batch.symlink_to("../VERSION")
         self.env["COMMON_SCRIPT"] = str(SOURCE / "scripts/action/common.sh")
         self.env["PLAN_PATH"] = str(plan)

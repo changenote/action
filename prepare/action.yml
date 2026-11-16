@@ -8,7 +8,7 @@ inputs:
     description: Changenote CLI version to install from PyPI with uv. Use latest or an exact stable version with a v prefix.
     default: latest
   operation:
-    description: Environment scope only. manage-pr prepares pending notes; inspect or publish prepares the saved batch; auto prepares both.
+    description: Environment scope only. manage-pr prepares pending notes; inspect or publish prepares the committed release; auto prepares both.
     default: manage-pr
   github-token:
     description: Token with contents read permission for all environment scopes.

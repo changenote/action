@@ -239,7 +239,7 @@ class TargetControls(unittest.TestCase):
         self.f.commit("second package")
         self.f.git("push", "origin", "main")
         sha = self.h.merged()
-        batch = json.loads((self.f.repo / ".changenote/releases.json").read_text())
+        batch = self.f.release_plan
         first, second = (item["tag"] for item in batch)
         self.f.git("tag", second, sha + "^")
         self.f.git("push", "origin", "refs/tags/" + second)

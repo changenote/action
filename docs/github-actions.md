@@ -30,7 +30,7 @@ Manual events only manage the PR, regardless of configured scripts or publicatio
 | `/prepare` | Prepare project tools and offline caches; create no PRs, tags, or Releases. |
 | `/manage-pr` | Generate version changes and manage the Release PR, without merging or publishing. |
 | `/check` | Check contributor PR note coverage without writes. |
-| `/inspect` | Verify the latest committed batch and inspect GitHub publication state without writes. |
+| `/inspect` | Verify the latest release commit and inspect GitHub publication state without writes. |
 | `/publish` | Revalidate the batch and create Git tags and GitHub Releases, not registry uploads. |
 
 Each standalone operation can install its CLI.
@@ -40,7 +40,7 @@ An exact `version` must match that executable.
 With `version: latest` and an explicit path, the installed stable version is validated without resolving PyPI again.
 Paths do not transfer between jobs. Use the same exact CLI and project tool versions across jobs.
 
-`/prepare` uses `operation` only as an environment scope: `manage-pr` for pending notes, `inspect` or `publish` for the saved batch, and `auto` for both.
+`/prepare` uses `operation` only as an environment scope: `manage-pr` for pending notes, `inspect` or `publish` for the committed release, and `auto` for both.
 The `publish` scope requires `expected-release-commit`; other scopes reject that guard.
 Preparation does not execute the named release operation.
 Root `prepare` defaults to `true` for every invocation. PR-only calls prepare pending PR work.

@@ -30,7 +30,7 @@ Run it on that branch with `push` or `workflow_dispatch`, not a contributor PR e
 
 ## Configuration
 
-- `operation` defaults to `manage-pr` for pending notes; `inspect` and `publish` select the saved batch, and `auto` prepares both scopes.
+- `operation` defaults to `manage-pr` for pending notes; `inspect` and `publish` select the committed release, and `auto` prepares both scopes.
 - `expected-release-commit` is required for `publish` preparation and rejected for all other scopes; use the exact lowercase 40-character batch SHA returned by inspection.
 - `base-branch` defaults to the repository default branch; `github-token` defaults to the workflow token.
 - `version` defaults to CLI `latest`; exact stable versions require a `v` prefix.

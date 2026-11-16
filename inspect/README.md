@@ -1,7 +1,8 @@
 # Changenote Inspect
 
-Verify the latest saved release batch and inspect its GitHub tag and Release state on Linux without remote writes.
+Verify the latest committed release and inspect its GitHub tag and Release state on Linux without remote writes.
 Completed batches are returned as well as batches with incomplete publication.
+Release identity comes from consumed notes and verified Git history; no batch file is required.
 
 ## Usage
 

@@ -262,7 +262,7 @@ class Inspect(unittest.TestCase):
         self.assertEqual(out["ready"], "false")
 
     def test_deleted_malformed_and_root_batches(self):
-        self.f.release()
+        self.f.release(saved=True)
         batch = self.f.repo / ".changenote/releases.json"
         for text in ("bad", "[]"):
             batch.write_text(text)

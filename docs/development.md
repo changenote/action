@@ -94,7 +94,7 @@ The initial `0.0.0` baseline is unreleased; the initial patch note plans `v0.0.1
 
 Add notes according to the [Action note policy](../.changenote/README.md), then run `changenote status`.
 CI validates the plan with the installed CLI.
-The first version PR generates `CHANGELOG.md` and `.changenote/releases.json`, updates `VERSION`, and consumes the initial note.
+A version PR updates `VERSION`, writes `CHANGELOG.md`, and consumes notes. Historical CLI writers also save `.changenote/releases.json`; the file-free writer removes that legacy file on its first nonempty release. The Action supports both storage profiles.
 Those generated files are not created by this setup change.
 
 The repository's Release workflow uses the root `./` Action with both publication controls explicitly true after checking out `${{ github.sha }}`.

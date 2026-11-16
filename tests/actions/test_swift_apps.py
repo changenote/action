@@ -115,7 +115,7 @@ class SwiftApps(unittest.TestCase):
             "bash", "-c", 'source "$1"; stage_release "$2"', "stage",
             str(test_actions.SOURCE / "scripts/action/common.sh"), str(plan),
         ])
-        self.assertEqual(set(f.git("diff", "--cached", "--name-only").splitlines()), self.outputs)
+        f.assert_output_paths(f.git("diff", "--cached", "--name-only").splitlines(), self.outputs)
         self.assertEqual(set(f.git("diff", "--name-only").splitlines()), set(self.sources))
         self.assertEqual(f.git("ls-files", "--others", "--exclude-standard"), "untracked.swift")
         self.assert_version_bytes()
@@ -125,15 +125,13 @@ class SwiftApps(unittest.TestCase):
         _, outputs = f.action()
         self.assertEqual(outputs["pr-operation"], "created")
         f.git("fetch", "origin", test_actions.BRANCH)
-        self.assertEqual(set(f.git("diff", "--name-only", "HEAD", "FETCH_HEAD").splitlines()), self.outputs)
+        f.assert_output_paths(f.git("diff", "--name-only", "HEAD", "FETCH_HEAD").splitlines(), self.outputs)
         f.git("merge", "--squash", "FETCH_HEAD")
         release = f.commit("Swift app release")
         f.git("push", "origin", "main")
         self.assert_version_bytes()
         for path, content in self.sources.items():
             self.assertEqual((f.repo / path).read_bytes(), content)
-        batch = json.loads((f.repo / ".changenote/releases.json").read_text())
-        self.assertEqual({entry["tag"] for entry in batch}, self.tags)
         f.later_commit()
         before_refs = f.git("ls-remote", "origin")
         _, preview = f.action("inspect")

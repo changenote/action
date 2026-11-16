@@ -1,7 +1,8 @@
 # Changenote Publish
 
-Revalidate the latest saved release batch on Linux and create missing annotated Git tags and GitHub Releases.
+Revalidate the latest committed release on Linux and create missing annotated Git tags and GitHub Releases.
 This Action does not upload packages to registries or replace existing release text.
+It supports file-free releases and historical metadata-only batches; see the [migration rules](../docs/migration.md#file-free-release-identity).
 
 ## Usage
 

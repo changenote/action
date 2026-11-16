@@ -89,7 +89,11 @@ checkout_work() {
 
 stage_release() {
   local plan=$1 path directory lock component
-  local paths=(.changenote/releases.json) unique=()
+  local paths=() unique=()
+  if [[ -e .changenote/releases.json || -L .changenote/releases.json ]] || \
+    git ls-files --error-unmatch -- .changenote/releases.json >/dev/null 2>&1; then
+    paths+=(.changenote/releases.json)
+  fi
   local -A seen=()
   while IFS= read -r -d '' path; do
     paths+=("$path")
