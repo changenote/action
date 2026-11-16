@@ -41,26 +41,75 @@ restore_pending_notes() {
   fi
 }
 
+is_release_note() {
+  local name=${1#.changenote/}
+  [[ $1 == .changenote/*.md && $name != */* && $name != .* ]] || return 1
+  case ${name,,} in readme.md|agents.md|claude.md|gemini.md) return 1 ;; esac
+}
+
+version_sources_changed() {
+  local path
+  git show "$parent:.changenote/config.json" > "$temp/candidate-config" || fail 'Cannot read release configuration.'
+  jq -j '
+    def relative:
+      type == "string" and length > 0 and
+      (startswith("/") | not) and (contains("\u0000") | not) and
+      (split("/") | all(. != ".."));
+    .packages[] |
+    if (.path | relative) and (.version_file | relative) and
+       ((.version_outputs // []) | type == "array" and all(.[]; relative))
+    then . else error("Version sources must be relative file paths") end |
+    .path as $directory |
+    (.version_file, (.version_outputs // [])[]) |
+    ($directory + "/" + . | split("/") | map(select(. != "" and . != ".")) | join("/")) + "\u0000"
+  ' "$temp/candidate-config" > "$temp/candidate-version-paths" || fail 'Cannot read release version sources.'
+  [[ -s $temp/candidate-version-paths ]] || fail 'Release configuration has no version sources.'
+  while IFS= read -r -d '' path; do
+    git --literal-pathspecs diff --name-only -z "$parent" "$commit" -- "$path" \
+      > "$temp/candidate-version-diff" || fail 'Cannot inspect release version sources.'
+    if [[ -s $temp/candidate-version-diff ]]; then return 0; fi
+  done < "$temp/candidate-version-paths"
+  return 1
+}
+
 find_publication_batch() {
-  # Explicit first-parent diffs also select merge commits whose tree matches the PR head.
+  local commit parents path consumed=false mode
   release=''
+  parent=''
+  file_free=false
+  # Keep Git errors separate from an empty candidate set. Paths stay NUL-delimited.
+  git rev-list --first-parent "$base_sha" > "$temp/candidate-history" || fail 'Cannot read release history.'
   while IFS= read -r commit; do
-    parent=$(git rev-parse "$commit^" 2>/dev/null || true)
-    if [[ -z $parent || $parent == "$commit^" ]]; then
-      if git cat-file -e "$commit:.changenote/releases.json" 2>/dev/null; then
-        fail 'A release batch in a root commit has no verifiable parent.'
-      fi
+    parents=$(git rev-list --parents -n 1 "$commit") || fail 'Cannot read release parents.'
+    if [[ $parents == "$commit" ]]; then
+      git ls-tree "$commit" -- .changenote/releases.json > "$temp/candidate-entry" || fail 'Cannot inspect root release.'
+      [[ ! -s $temp/candidate-entry ]] || fail 'A release batch in a root commit has no verifiable parent.'
       break
     fi
-    if ! git diff --quiet "$parent" "$commit" -- .changenote/releases.json; then
-      release=$commit
-      break
-    fi
-  done < <(git rev-list --first-parent "$base_sha")
-  [[ -n $release ]] || return 0
-  git show "$release:.changenote/releases.json" > "$temp/batch.json" || fail 'Release batch was removed; inspect history manually.'
-  jq -e 'type == "array" and length > 0' "$temp/batch.json" >/dev/null || fail 'Invalid or empty release batch.'
-  parent=$(git rev-parse "$release^")
+    parent=${parents#* }
+    parent=${parent%% *}
+    git diff --no-renames --diff-filter=D --name-only -z "$parent" "$commit" -- .changenote \
+      > "$temp/candidate-deleted" || fail 'Cannot inspect consumed notes.'
+    consumed=false
+    while IFS= read -r -d '' path; do
+      if is_release_note "$path"; then consumed=true; break; fi
+    done < "$temp/candidate-deleted"
+    git diff --name-only "$parent" "$commit" -- .changenote/releases.json \
+      > "$temp/candidate-batch" || fail 'Cannot inspect historical batch changes.'
+    if [[ -s $temp/candidate-batch ]]; then release=$commit; break; fi
+    if [[ $consumed == true ]] && version_sources_changed; then release=$commit; break; fi
+  done < "$temp/candidate-history"
+  if [[ -z $release ]]; then parent=''; return 0; fi
+  git ls-tree "$release" -- .changenote/releases.json > "$temp/candidate-entry" || fail 'Cannot inspect release batch.'
+  if [[ ! -s $temp/candidate-entry ]]; then
+    [[ $consumed == true ]] || fail 'Release batch was removed without consumed notes.'
+    file_free=true
+  else
+    read -r mode _ < "$temp/candidate-entry"
+    [[ $mode == 100644 ]] || fail 'Release batch must be a regular file.'
+    git show "$release:.changenote/releases.json" > "$temp/batch.json" || fail 'Cannot read release batch.'
+    jq -e 'type == "array" and length > 0 and all(.[]; type == "object")' "$temp/batch.json" >/dev/null || fail 'Release batch must be a non-empty object array.'
+  fi
 }
 
 verify_publication_batch() {
@@ -73,6 +122,10 @@ verify_publication_batch() {
   select_publication_notes
   hide_pending_notes
   "$cli" status > "$temp/expected.json"
+  jq -e 'type == "array" and length > 0' "$temp/expected.json" >/dev/null || fail 'Batch does not match the parent release plan: no active consumed notes.'
+  if [[ $file_free == true ]]; then
+    jq 'map(del(.notes))' "$temp/expected.json" > "$temp/batch.json"
+  fi
   if jq -e --slurpfile expected "$temp/expected.json" '. == ($expected[0] | map(del(.notes)))' "$temp/batch.json" >/dev/null; then
     legacy_batch=false
   elif jq -e --slurpfile expected "$temp/expected.json" '. == $expected[0]' "$temp/batch.json" >/dev/null; then
@@ -91,9 +144,14 @@ verify_publication_batch() {
     options=()
     if [[ -n $profile ]]; then options+=("$profile"); fi
     if "$cli" version "${options[@]}" > "$temp/applied.json"; then
-      if [[ $legacy_batch == true ]]; then
-        # Rebuild the old batch from validated parent notes, not saved bytes.
+      # Only the batch-storage format differs between these known profiles.
+      # Never copy committed batch bytes into the reconstructed tree.
+      if [[ $file_free == true ]]; then
+        rm -f -- .changenote/releases.json
+      elif [[ $legacy_batch == true ]]; then
         cp -- "$temp/expected.json" .changenote/releases.json
+      else
+        jq 'map(del(.notes))' "$temp/expected.json" > .changenote/releases.json
       fi
       restore_pending_notes
       stage_release "$temp/batch.json"
@@ -103,6 +161,34 @@ verify_publication_batch() {
   done
   [[ $generated == "$expected_tree" ]] || fail 'Release commit contains changes beyond the generated release tree.'
   git reset --hard "$release"
+}
+
+# Create annotated local tags from the verified plan, independent of batch storage.
+# Preflight the complete set before any tag write, including caller-local refs.
+create_publication_tags() {
+  local tag existing existing_tags
+  local pending=() planned=()
+  existing_tags=$(git for-each-ref --format='%(refname:strip=2)' refs/tags)
+  while IFS= read -r tag; do
+    [[ -n $tag && $tag != -* ]] || fail "Invalid release tag: $tag"
+    git check-ref-format "refs/tags/$tag" || fail "Invalid release tag: $tag"
+    for existing in "${planned[@]}"; do
+      [[ $tag != "$existing" && $tag != "$existing/"* && $existing != "$tag/"* ]] || fail "Release tag namespace conflict: $tag and $existing"
+    done
+    planned+=("$tag")
+    local found=false
+    while IFS= read -r existing; do
+      [[ -n $existing ]] || continue
+      if [[ $existing == "$tag" ]]; then
+        [[ $(git rev-parse "refs/tags/$tag^{commit}") == "$release" ]] || fail "Local tag already exists on a different commit: $tag"
+        found=true
+      elif [[ $existing == "$tag/"* || $tag == "$existing/"* ]]; then
+        fail "Local tag namespace conflict: $tag and $existing"
+      fi
+    done <<< "$existing_tags"
+    if [[ $found == false ]]; then pending+=("$tag"); fi
+  done < <(jq -r '.[].tag' "$temp/batch.json")
+  for tag in "${pending[@]}"; do git tag -a -m "$tag" -- "$tag" "$release"; done
 }
 
 # Recheck selection after replay and remote inspection, just before side effects.

@@ -5,6 +5,21 @@ The Rust CLI and its crates.io and PyPI publication belong to `changenote/change
 The repositories have independent versions and commit SHAs.
 The Action `version` input selects a published CLI, not the Action release.
 
+## File-free release identity
+
+New CLI releases do not save `.changenote/releases.json`. The Action finds the release commit from consumed notes and verifies its complete generated tree. Historical metadata-only batches remain supported. Note-bearing historical batches retain their existing completed-publication-only restriction.
+
+1. Merge and review this Action support before enabling the file-free CLI in production.
+2. Pin each operation to the same reviewed compatible Action SHA and exact CLI version. For a trusted source-built CLI in the same job, pass `cli-path` explicitly; changing `PATH` alone does not override installation.
+3. Replace file readers with the verified `release-commit` and `releases` outputs. Update registry/build helpers to check both the selected SHA and package metadata. A shallow build checkout does not need release-parent history when those verified outputs are supplied.
+4. The first nonempty version run with the new CLI removes an existing regular batch file transactionally. Commit that deletion with the other generated outputs. No-op version runs do not remove it.
+
+Local `tag` now requires complete history and targets the selected release commit, not a later unrelated `HEAD`. Actions fetch release history themselves. Missing history, inconsistent outputs, and malformed newest candidates stop before publication; missing tags are not release-membership evidence.
+
+The release owner must activate reviewed pins only after local checks and both supported-writer CI runs pass. Consumer maintainers, including `changenote/example`, must update their own scripts and pins separately. Account setup, branch rules, native builds, and real publication retries remain owner-operated checks in an explicitly authorized disposable repository. Local mocks do not prove those paths and do not authorize package publication or release workflow dispatch.
+
+After a file-free release is committed, retain compatible new tooling to inspect and retry that exact SHA. Old tooling alone cannot recover a release without its batch file. Do not invent a batch, rewrite release commits, move tags, or replace existing release text. For a partial publication, retry only the missing operations after inspection.
+
 ## Release PR branch names
 
 New Release PRs use `changenote-release/<base-branch>` instead of `narumi/chore/changenote-release-<base-branch>`.
@@ -30,7 +45,7 @@ GitHub may only warn about undeclared `with` inputs; do not expect a hard failur
    - Built-in tags and Releases remain disabled unless explicitly enabled.
    - Set `prepare: 'false'` to retain caller-owned preparation. The old mode skipped preparation regardless of the input default.
 2. Previous `operation: auto` callers: remove `operation` and set both `push-git-tags: 'true'` and `create-github-releases: 'true'`.
-   - Without scripts, this retains publication of the latest saved batch on later pushes.
+   - Without scripts, this retains publication of the latest verified release on later pushes.
 3. No-input callers: PR-only writes remain the default.
    - `prepare: 'true'` now applies consistently. PR-only calls return an empty `release-commit`, `releases: '[]'`, and `ready: 'false'`.
    - Selected batches retain identity even when requested GitHub work is already complete.

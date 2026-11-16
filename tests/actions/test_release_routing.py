@@ -86,6 +86,22 @@ class ReleaseRouting(unittest.TestCase):
                     {"manage-pr": "true", "publish": "true", "release-commit": release},
                 )
 
+    def test_later_note_retraction_does_not_hide_a_managed_release(self):
+        release = self.fixture.release()
+        self.associate(release)
+        self.fixture.note(name="retracted")
+        (self.fixture.repo / ".changenote/retracted.md").unlink()
+        self.fixture.commit("retract pending note")
+        result, values = self.classify()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(values["release-commit"], release)
+        self.assertEqual(values["publish"], "true")
+        self.fixture.set_state(api_fail=True)
+        result, values = self.classify(before=release)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(values["publish"], "false")
+        self.assertEqual(values["release-commit"], "")
+
     def test_ordinary_push_after_historical_release_does_not_query_api(self):
         release = self.fixture.release()
         self.fixture.later_commit()
@@ -278,12 +294,16 @@ class ReleaseRouting(unittest.TestCase):
         pr = self.managed(release)
         event = dict(before=self.before, after=release, forced=False, deleted=False)
         original = routing.command
+        original_output = routing.subprocess.check_output
         for base in ("stable", "release/1.x"):
             with self.subTest(base=base):
                 pr["base"]["ref"] = base
                 pr["head"]["ref"] = f"changenote-release/{base}"
                 self.associate(release, [pr])
-                with patch.object(routing, "command", side_effect=lambda *args: self.fixture.run_cmd(list(args)).stdout.strip()):
+                with (
+                    patch.object(routing, "command", side_effect=lambda *args: self.fixture.run_cmd(list(args)).stdout.strip()),
+                    patch.object(routing.subprocess, "check_output", side_effect=lambda args: original_output(args, cwd=self.fixture.repo, env=self.fixture.env)),
+                ):
                     result = routing.route("push", event, "test/repo", f"refs/heads/{base}", base)
                 self.assertEqual(result["release-commit"], release)
                 self.assertEqual(result["publish"], "true")

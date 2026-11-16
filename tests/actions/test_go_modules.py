@@ -56,7 +56,7 @@ class GoModules(unittest.TestCase):
             "bash", "-c", 'source "$1"; stage_release "$2"', "stage",
             str(test_actions.SOURCE / "scripts/action/common.sh"), str(plan),
         ])
-        self.assertEqual(set(f.git("diff", "--cached", "--name-only").splitlines()), self.outputs)
+        f.assert_output_paths(f.git("diff", "--cached", "--name-only").splitlines(), self.outputs)
         self.assertEqual(set(f.git("diff", "--name-only").splitlines()), {"module.go", "sdk/v2/go.mod"})
         self.assertIn("untracked.go", f.git("ls-files", "--others", "--exclude-standard"))
         for path, content in self.sources.items():
@@ -68,7 +68,7 @@ class GoModules(unittest.TestCase):
         _, outputs = f.action()
         self.assertEqual(outputs["pr-operation"], "created")
         f.git("fetch", "origin", test_actions.BRANCH)
-        self.assertEqual(set(f.git("diff", "--name-only", "HEAD", "FETCH_HEAD").splitlines()), self.outputs)
+        f.assert_output_paths(f.git("diff", "--name-only", "HEAD", "FETCH_HEAD").splitlines(), self.outputs)
         f.git("merge", "--squash", "FETCH_HEAD")
         release = f.commit("Go release")
         f.git("push", "origin", "main")
@@ -77,8 +77,6 @@ class GoModules(unittest.TestCase):
         self.assertEqual((f.repo / "VERSION").read_text(), "1.0.1\n")
         self.assertEqual((f.repo / "sdk/v2/VERSION").read_text(), "2.2.1\n")
         expected_tags = {"v1.0.1", "sdk/v2.2.1"}
-        batch = json.loads((f.repo / ".changenote/releases.json").read_text())
-        self.assertEqual({entry["tag"] for entry in batch}, expected_tags)
         f.later_commit()
         before_tags = f.git("ls-remote", "--tags", "origin")
         _, preview = f.action("inspect")

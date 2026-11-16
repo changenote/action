@@ -9,7 +9,7 @@ GitHub Actions for [changenote](https://github.com/changenote/changenote) note c
 | [`changenote/action/prepare`](prepare/README.md) | Prepare project tools and offline lockfile caches, without PR or publication writes. |
 | [`changenote/action/check`](check/README.md) | Check contributor PR note coverage with read-only permissions. |
 | [`changenote/action/manage-pr`](manage-pr/README.md) | Generate version changes and create, update, or close the managed Release PR. |
-| [`changenote/action/inspect`](inspect/README.md) | Verify the latest committed batch and inspect GitHub publication state without writes. |
+| [`changenote/action/inspect`](inspect/README.md) | Verify the latest release commit and inspect GitHub publication state without writes. |
 | [`changenote/action/publish`](publish/README.md) | Revalidate the batch and create missing tags and GitHub Releases. |
 
 All Actions support Linux.
@@ -63,6 +63,9 @@ Built-in publication creates Git tags and GitHub Releases in the caller's reposi
 Use separate Actions for external CI and deployment approvals.
 `/inspect` also returns completed batches; gate automatic GitHub work with `publication-needed`.
 For an explicit publication retry, inspect the latest batch and pass its commit to `/publish`.
+File-free releases use verified consumed notes, not a batch file.
+Historical releases also require their committed batch metadata.
+Before enabling file-free CLI releases, follow the [migration order](docs/migration.md#file-free-release-identity).
 
 ## CLI and project setup
 

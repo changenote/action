@@ -52,8 +52,7 @@ class ExtendedOutputs(unittest.TestCase):
         for path in ("package.json", "nested/package.json", "package-lock.json"):
             self.assertEqual(json.loads(f.git("show", f"{release}:{path}"))["version"], "1.0.1")
         self.assertIn('version = "1.0.1"', f.git("show", f"{release}:pyproject.toml"))
-        batch = json.loads(f.git("show", f"{release}:.changenote/releases.json"))
-        self.assertEqual(batch[0]["tag"], "sdk/v1.0.1")
+        self.assertEqual(f.release_plan[0]["tag"], "sdk/v1.0.1")
         f.later_commit()
         _, preview = f.action("inspect")
         self.assertEqual(preview["ready"], "true")
@@ -121,10 +120,10 @@ class ExtendedOutputs(unittest.TestCase):
             "package-lock.json", "CHANGELOG.md",
         }
         staged = set(f.git("diff", "--cached", "--name-only").splitlines())
-        self.assertEqual(staged, expected)
+        f.assert_output_paths(staged, expected)
         args = args_file.read_bytes().decode().split("\0")[3:-1]
-        self.assertEqual(set(args), expected)
-        self.assertEqual(len(args), len(expected))
+        self.assertEqual(set(args), staged)
+        self.assertEqual(len(args), len(staged))
         self.assertIn("unrelated.txt", f.git("diff", "--name-only"))
         self.assertIn("untracked.txt", f.git("ls-files", "--others", "--exclude-standard"))
 

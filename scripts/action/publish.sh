@@ -39,7 +39,7 @@ if [[ $legacy_batch == true ]]; then
 fi
 require_unchanged_publication_batch
 [[ $push_tags == true ]] || exit 0
-"$cli" tag
+create_publication_tags
 changed='[]'
 record_publication() {
   [[ $did_publish == true && $recorded == false ]] || return 0

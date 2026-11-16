@@ -215,7 +215,7 @@ class ReleaseEnvironment(unittest.TestCase):
         self.save()
         f.note()
         f.git("checkout", "-b", "prepared-release")
-        f.cli("version")
+        released = json.loads(f.cli("version"))
         release_head = f.commit("release pkg only")
         f.git("checkout", "main")
         f.cli("add", "later-web", "--package", "web", "--bump", "patch",
@@ -223,8 +223,7 @@ class ReleaseEnvironment(unittest.TestCase):
         self.save()
         f.git("merge", "--no-ff", release_head, "-m", "merge prepared release")
         f.git("push", "origin", "main")
-        self.assertEqual([item["package"] for item in json.loads(
-            (f.repo / ".changenote/releases.json").read_text())], ["pkg"])
+        self.assertEqual([item["package"] for item in released], ["pkg"])
         self.stub("npm", fail=True)
         f.env["INPUT_OPERATION"] = "inspect"
         _, tools = self.run_environment()

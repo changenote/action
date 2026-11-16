@@ -53,7 +53,7 @@ class ConfigPolicies(unittest.TestCase):
         self.assertEqual((f.repo / "b/VERSION").read_text(), "2.4.9\n")
         self.assertFalse((f.repo / "b/CHANGELOG.md").exists())
         self.assertIn("Linked version baseline: 2.4.9", f.state()["pulls"][-1]["body"])
-        self.assertEqual(json.loads(f.git("show", release + ":.changenote/releases.json"))[0]["version"], "2.4.10")
+        self.assertEqual(f.release_plan[0]["version"], "2.4.10")
         f.action("inspect")
         _, result = f.action("publish")
         self.assertEqual(result["published"], "true")

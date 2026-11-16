@@ -239,7 +239,7 @@ class CommandHooks(unittest.TestCase):
     def test_invalid_tree_is_not_execution_authority(self):
         self.merged()
         batch = self.f.repo / ".changenote/releases.json"
-        batch.write_text(batch.read_text() + "\n")
+        batch.write_text((batch.read_text() if batch.exists() else "[{}]") + "\n")
         (self.f.repo / "injected.txt").write_text("not a release output")
         sha = self.f.commit("tampered tree")
         self.f.git("push", "origin", "main")
